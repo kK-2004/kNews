@@ -1,0 +1,13 @@
+name = "knews"
+compatibility_date = "2026-02-08"
+main = "dist/output/public/_worker.js"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+VITE_API_BASE_URL = "/api"
+VITE_APP_NAME = "kNews"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "knews"
+database_id = "REPLACE YOUR DATABASE ID"

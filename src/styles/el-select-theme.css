@@ -1,0 +1,100 @@
+.theme-dark {
+  --el-text-color-primary: var(--text);
+  --el-text-color-regular: var(--text);
+  --el-text-color-secondary: color-mix(in srgb, var(--muted) 88%, var(--text));
+  --el-fill-color-blank: color-mix(in srgb, var(--surface) 92%, transparent);
+  --el-bg-color-overlay: color-mix(in srgb, var(--surface) 96%, transparent);
+  --el-border-color: var(--border);
+  --el-border-color-light: color-mix(in srgb, var(--border) 88%, transparent);
+  --el-fill-color-light: color-mix(in srgb, var(--muted) 14%, transparent);
+  --el-color-primary-light-9: color-mix(in srgb, #4f7cff 18%, transparent);
+}
+
+.el-select {
+  --el-text-color-primary: var(--text);
+  --el-text-color-regular: var(--text);
+  --el-text-color-secondary: color-mix(in srgb, var(--muted) 88%, var(--text));
+  --el-fill-color-blank: color-mix(in srgb, var(--surface) 92%, transparent);
+  --el-bg-color-overlay: color-mix(in srgb, var(--surface) 96%, transparent);
+  --el-border-color: transparent;
+  --el-border-color-light: transparent;
+  --el-border-color-lighter: transparent;
+  --el-fill-color-light: color-mix(in srgb, #0b63ff 12%, transparent);
+}
+
+.el-select__wrapper {
+  background: color-mix(in srgb, var(--surface) 92%, transparent) !important;
+  border: none !important;
+  border-radius: 0.6rem !important;
+  box-shadow: none !important;
+  color: var(--text) !important;
+  min-height: 2.25rem;
+}
+
+.el-select__wrapper.is-focused,
+.el-select__wrapper:focus-within {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #0b63ff 36%, transparent) !important;
+}
+
+.el-select__selected-item,
+.el-select__placeholder,
+.el-select__input,
+.el-select__caret {
+  color: var(--text) !important;
+}
+
+.el-select__popper.el-popper {
+  --el-bg-color-overlay: transparent;
+  --el-border-color-light: transparent;
+  --el-border-color-lighter: transparent;
+  --el-border-color: transparent;
+  --el-popper-border-radius: 0;
+  --el-popper-padding: 0;
+  background: color-mix(in srgb, var(--surface) 96%, transparent) !important;
+  border: none !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.12) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.el-select__popper .el-select-dropdown {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0.25rem !important;
+}
+
+.el-select__popper [data-popper-arrow],
+.el-select__popper .el-popper__arrow,
+.el-select__popper .el-popper__arrow::before,
+.el-select__popper::before,
+.el-select__popper::after {
+  border: none !important;
+  box-shadow: none !important;
+  content: none !important;
+  display: none !important;
+}
+
+.el-select__popper .el-select-dropdown__item {
+  background: transparent !important;
+  border-radius: 0.45rem;
+  color: var(--text) !important;
+  font-size: 0.86rem;
+  margin: 0.08rem 0;
+  min-height: 2rem;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.el-select__popper .el-select-dropdown__item.hover,
+.el-select__popper .el-select-dropdown__item:hover {
+  background: color-mix(in srgb, #0b63ff 12%, transparent) !important;
+  color: color-mix(in srgb, #0b63ff 82%, var(--text)) !important;
+}
+
+.el-select__popper .el-select-dropdown__item.is-selected {
+  background: color-mix(in srgb, #0b63ff 18%, transparent) !important;
+  color: color-mix(in srgb, #0b63ff 90%, var(--text)) !important;
+  font-weight: 600;
+}

@@ -1,0 +1,14 @@
+node_modules
+dist
+.vite
+.env
+.env.*
+.data
+!.env.example
+.DS_Store
+.claude
+.codex
+test
+openspec
+docs
+wrangler.toml
