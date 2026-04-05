@@ -79,55 +79,67 @@ class GitHubOAuthStrategy extends AuthTemplate {
    * @param {number} [initiated.interval] - Polling interval in seconds (default 5)
    * @returns {Promise<{github_id: string, email: string|null, nickname: string}>}
    */
-  async validate({ device_code, interval = 5 }) {
+  async validate({ device_code, interval = 5, signal } = {}) {
     const MAX_POLL_MS = 5 * 60 * 1000;
     const startTime = Date.now();
     let currentInterval = interval;
 
     let accessToken;
+    // Wait before polling
+    await this._sleep(3 * 1000, signal);
 
-    while (Date.now() - startTime < MAX_POLL_MS) {
-      // Wait before polling
-      await this._sleep(currentInterval * 1000);
+    try {
+      while (Date.now() - startTime < MAX_POLL_MS) {
+        if (signal?.aborted) {
+          throw new DOMException('Aborted', 'AbortError');
+        }
 
-      const response = await fetch('https://github.com/login/oauth/access_token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          client_id: this.clientId,
-          device_code,
-          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-        }),
-      });
+        const response = await fetch('https://github.com/login/oauth/access_token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({
+            client_id: this.clientId,
+            device_code,
+            grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+          }),
+          signal,
+        });
 
-      if (!response.ok) {
-        throw new Error(`GitHub token polling failed: ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`GitHub token polling failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.error) {
+          await this._sleep(currentInterval * 1000, signal);
+          if (data.error === 'authorization_pending') {
+            continue; // User hasn't authorized yet, retry
+          }
+          if (data.error === 'slow_down') {
+            currentInterval += 5; // Back off
+            continue;
+          }
+          if (data.error === 'expired_token') {
+            throw new Error('GitHub device code expired. Please try again.');
+          }
+          if (data.error === 'access_denied') {
+            throw new Error('GitHub authorization was denied.');
+          }
+          throw new Error(`GitHub token error: ${data.error_description || data.error}`);
+        }
+
+        accessToken = data.access_token;
+        break;
       }
-
-      const data = await response.json();
-
-      if (data.error) {
-        if (data.error === 'authorization_pending') {
-          continue; // User hasn't authorized yet, retry
-        }
-        if (data.error === 'slow_down') {
-          currentInterval += 5; // Back off
-          continue;
-        }
-        if (data.error === 'expired_token') {
-          throw new Error('GitHub device code expired. Please try again.');
-        }
-        if (data.error === 'access_denied') {
-          throw new Error('GitHub authorization was denied.');
-        }
-        throw new Error(`GitHub token error: ${data.error_description || data.error}`);
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        throw new Error('Device flow was cancelled.');
       }
-
-      accessToken = data.access_token;
-      break;
+      throw err;
     }
 
     if (!accessToken) {
@@ -179,8 +191,15 @@ class GitHubOAuthStrategy extends AuthTemplate {
    * @param {number} ms
    * @returns {Promise<void>}
    */
-  _sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  _sleep(ms, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+      const timer = setTimeout(resolve, ms);
+      signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        reject(new DOMException('Aborted', 'AbortError'));
+      }, { once: true });
+    });
   }
 }
 

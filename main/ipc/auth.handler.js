@@ -31,6 +31,7 @@ function register(ipcMain, { authContext, sessionPersistence, supabase }) {
         user_code: initiated.user_code,
         interval: initiated.interval,
         sender: event.sender,
+        abortController: new AbortController(),
       };
 
       return {
@@ -59,10 +60,10 @@ function register(ipcMain, { authContext, sessionPersistence, supabase }) {
       return { error: 'No pending GitHub login. Please start again.' };
     }
 
-    const { strategy, device_code, interval } = pendingDeviceFlow;
+    const { strategy, device_code, interval, abortController } = pendingDeviceFlow;
 
     try {
-      const userInfo = await strategy.validate({ device_code, interval });
+      const userInfo = await strategy.validate({ device_code, interval, signal: abortController.signal });
       const user = await strategy.syncUser(userInfo);
       const session = await strategy.createSession({ ...userInfo, id: user.id, level: user.level });
 
@@ -77,7 +78,18 @@ function register(ipcMain, { authContext, sessionPersistence, supabase }) {
     } catch (err) {
       console.error('[auth] GitHub complete failed:', err.message);
       return { error: err.message };
+    } finally {
+      pendingDeviceFlow = null;
     }
+  });
+
+  ipcMain.handle('auth:cancelGithub', async () => {
+    if (pendingDeviceFlow?.abortController) {
+      pendingDeviceFlow.abortController.abort();
+      pendingDeviceFlow = null;
+      console.log('[auth] GitHub Device Flow cancelled by user');
+    }
+    return { cancelled: true };
   });
 
   // --- Magic Link ---

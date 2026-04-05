@@ -3,9 +3,7 @@
     <Transition name="login-fade">
       <div v-if="visible" class="login-backdrop" @click.self="$emit('close')">
         <div class="login-modal" role="dialog" aria-modal="true" @click.stop>
-          <!-- === Email Mode === -->
-          <template v-if="mode === 'email'">
-            <div class="login-modal-header">
+          <div class="login-modal-header">
               <div class="login-icon-badge">
                 <span class="i-tabler-lock login-icon" aria-hidden="true"></span>
               </div>
@@ -64,7 +62,7 @@
                 <div class="login-divider-line"></div>
               </div>
 
-              <button class="login-github-btn" type="button" @click="switchToGithub">
+              <button class="login-github-btn" type="button" @click="emit('close'); emit('github-login')">
                 <svg class="login-github-icon" viewBox="0 0 24 24">
                   <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                 </svg>
@@ -80,64 +78,8 @@
                 <a class="login-footer-link" href="#">服务条款</a>。
               </p>
             </div>
-          </template>
-
-          <!-- === GitHub Device Code Mode === -->
-          <template v-else-if="mode === 'github'">
-            <div class="login-modal-header">
-              <div class="login-icon-badge github-badge">
-                <svg class="login-github-icon-lg" viewBox="0 0 24 24">
-                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-                </svg>
-              </div>
-              <h1 class="login-title">GitHub 身份验证</h1>
-              <p class="login-subtitle">将验证码复制到浏览器完成授权。</p>
-            </div>
-
-            <div class="login-modal-content">
-              <div v-if="githubUserCode" class="device-code-box">
-                <code class="device-code-text">{{ githubUserCode }}</code>
-                <button class="device-copy-btn" type="button" :class="{ copied: codeCopied }" @click="copyCode">
-                  <span v-if="codeCopied" class="i-tabler-check device-copy-check" aria-hidden="true"></span>
-                  <span v-else class="i-tabler-copy" aria-hidden="true"></span>
-                  <span>{{ codeCopied ? '已复制' : '复制' }}</span>
-                </button>
-              </div>
-
-              <div v-else class="device-loading">
-                <span class="login-spinner dark-spinner"></span>
-                <span>正在获取验证码...</span>
-              </div>
-
-              <p v-if="githubUserCode" class="device-instructions">
-                浏览器将自动打开验证页面。<br>
-                如果没有自动打开，请手动访问：
-                <a href="https://github.com/login/device" target="_blank" rel="noreferrer" class="device-link">github.com/login/device</a>
-              </p>
-
-              <div v-if="githubPolling" class="device-polling">
-                <span class="device-spinner"></span>
-                <span>等待授权中...</span>
-              </div>
-
-              <div v-if="githubError" class="login-error-hint">
-                <span class="i-tabler-alert-circle" aria-hidden="true"></span>
-                <span>{{ githubError }}</span>
-              </div>
-
-              <div class="device-actions">
-                <button class="device-back-btn" type="button" @click="switchToEmail">
-                  <span class="i-tabler-arrow-left" aria-hidden="true"></span>
-                  <span>返回</span>
-                </button>
-                <button class="device-cancel-btn" type="button" @click="$emit('close')">
-                  {{ githubPolling ? '取消登录' : '关闭' }}
-                </button>
-              </div>
-            </div>
-          </template>
+          </div>
         </div>
-      </div>
     </Transition>
   </Teleport>
 </template>
@@ -147,20 +89,15 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
-  githubUserCode: { type: String, default: '' },
-  githubPolling: { type: Boolean, default: false },
-  githubError: { type: String, default: '' },
 })
 
-const emit = defineEmits(['close', 'github-login', 'github-cancel', 'login-success'])
+const emit = defineEmits(['close', 'github-login', 'login-success'])
 
-const mode = ref('email')
 const email = ref('')
 const sending = ref(false)
 const emailSent = ref(false)
 const errorMsg = ref('')
 const cooldown = ref(0)
-const codeCopied = ref(false)
 
 let cooldownTimer = null
 
@@ -199,38 +136,6 @@ const sendMagicLink = async () => {
   }
 }
 
-const switchToGithub = () => {
-  mode.value = 'github'
-  emit('github-login')
-}
-
-const switchToEmail = () => {
-  mode.value = 'email'
-  emit('github-cancel')
-}
-
-const copyCode = async () => {
-  if (!props.githubUserCode) return
-  try {
-    await navigator.clipboard.writeText(props.githubUserCode)
-    codeCopied.value = true
-    setTimeout(() => { codeCopied.value = false }, 2000)
-  } catch { /* ignore */ }
-}
-
-watch(
-  () => props.githubUserCode,
-  async (code) => {
-    if (code) {
-      try {
-        await navigator.clipboard.writeText(code)
-        codeCopied.value = true
-        setTimeout(() => { codeCopied.value = false }, 2000)
-      } catch { /* ignore */ }
-    }
-  },
-)
-
 let unsubscribeSuccess = null
 let unsubscribeError = null
 
@@ -249,13 +154,11 @@ watch(
   () => props.visible,
   (open) => {
     if (open) {
-      mode.value = 'email'
       email.value = ''
       emailSent.value = false
       errorMsg.value = ''
       sending.value = false
       cooldown.value = 0
-      codeCopied.value = false
       if (cooldownTimer) { clearInterval(cooldownTimer); cooldownTimer = null }
 
       if (window.api?.auth?.onMagicLinkSuccess) {
@@ -332,19 +235,9 @@ onUnmounted(() => {
   width: 3rem;
 }
 
-.login-icon-badge.github-badge {
-  background: color-mix(in srgb, var(--border) 60%, transparent);
-}
-
 .login-icon {
   color: #409eff;
   font-size: 1.5rem;
-}
-
-.login-github-icon-lg {
-  fill: var(--text);
-  height: 1.5rem;
-  width: 1.5rem;
 }
 
 .login-title {
@@ -535,148 +428,6 @@ onUnmounted(() => {
   fill: currentColor;
   height: 1.25rem;
   width: 1.25rem;
-}
-
-/* --- GitHub Device Code --- */
-.device-code-box {
-  align-items: center;
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  display: flex;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
-}
-
-.device-code-text {
-  color: var(--text);
-  font-family: 'SF Mono', 'Consolas', monospace;
-  font-size: 1.4rem;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-}
-
-.device-copy-btn {
-  align-items: center;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 0.35rem;
-  color: var(--text);
-  cursor: pointer;
-  display: inline-flex;
-  font-size: 0.85rem;
-  gap: 0.3rem;
-  padding: 0.3rem 0.7rem;
-  transition: all 0.25s ease;
-}
-
-.device-copy-btn:hover {
-  background: color-mix(in srgb, #409eff 12%, var(--surface));
-  border-color: color-mix(in srgb, #409eff 38%, var(--border));
-}
-
-.device-copy-btn.copied {
-  background: color-mix(in srgb, #22c55e 12%, transparent);
-  border-color: #22c55e;
-  color: #22c55e;
-}
-
-.device-copy-check {
-  animation: check-pop 0.3s ease;
-}
-
-@keyframes check-pop {
-  0% { transform: scale(0); opacity: 0; }
-  60% { transform: scale(1.2); }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-.device-loading {
-  align-items: center;
-  color: var(--muted);
-  display: flex;
-  font-size: 0.9rem;
-  gap: 0.5rem;
-  justify-content: center;
-  padding: 1rem 0;
-}
-
-.device-instructions {
-  color: var(--muted);
-  font-size: 0.82rem;
-  line-height: 1.6;
-  margin: 0;
-  text-align: center;
-}
-
-.device-link {
-  color: #409eff;
-  text-decoration: none;
-}
-
-.device-link:hover {
-  text-decoration: underline;
-}
-
-.device-polling {
-  align-items: center;
-  display: flex;
-  gap: 0.5rem;
-  color: var(--muted);
-  font-size: 0.85rem;
-  justify-content: center;
-}
-
-.device-spinner {
-  animation: login-spin 0.8s linear infinite;
-  border: 2px solid color-mix(in srgb, var(--border) 60%, transparent);
-  border-top-color: #409eff;
-  border-radius: 50%;
-  display: inline-block;
-  height: 1rem;
-  width: 1rem;
-}
-
-.device-actions {
-  display: flex;
-  gap: 0.75rem;
-  justify-content: space-between;
-}
-
-.device-back-btn {
-  align-items: center;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 0.35rem;
-  color: var(--muted);
-  cursor: pointer;
-  display: inline-flex;
-  font-size: 0.85rem;
-  gap: 0.3rem;
-  padding: 0.45rem 0.9rem;
-  transition: all 0.15s ease;
-}
-
-.device-back-btn:hover {
-  background: color-mix(in srgb, var(--surface) 80%, var(--border));
-  color: var(--text);
-}
-
-.device-cancel-btn {
-  align-items: center;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 0.35rem;
-  color: #ba1a1a;
-  cursor: pointer;
-  display: inline-flex;
-  font-size: 0.85rem;
-  padding: 0.45rem 0.9rem;
-  transition: all 0.15s ease;
-}
-
-.device-cancel-btn:hover {
-  background: color-mix(in srgb, #ba1a1a 8%, transparent);
 }
 
 .login-modal-footer {

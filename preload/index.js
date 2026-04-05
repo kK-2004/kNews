@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("api", {
     initiateGithub: () => ipcRenderer.invoke("auth:initiateGithub"),
     openGithubBrowser: () => ipcRenderer.invoke("auth:openGithubBrowser"),
     completeGithub: () => ipcRenderer.invoke("auth:completeGithub"),
+    cancelGithub: () => ipcRenderer.invoke("auth:cancelGithub"),
     login: (provider) => ipcRenderer.invoke("auth:login", provider),
     sendMagicLink: (email) => ipcRenderer.invoke("auth:sendMagicLink", email),
     verifyMagicLink: (payload) => ipcRenderer.invoke("auth:verifyMagicLink", payload),

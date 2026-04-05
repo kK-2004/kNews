@@ -97,13 +97,17 @@
 
     <login-modal
       :visible="loginModalVisible"
-      :github-user-code="githubUserCode"
-      :github-polling="githubPolling"
-      :github-error="githubError"
       @close="loginModalVisible = false"
       @github-login="onModalGithubLogin"
-      @github-cancel="cancelGithubLogin"
       @login-success="onMagicLinkLoginSuccess"
+    />
+
+    <github-device-dialog
+      :visible="githubDialogVisible"
+      :user-code="githubUserCode"
+      :polling="githubPolling"
+      :error="githubError"
+      @cancel="onGithubDialogCancel"
     />
   </div>
 </template>
@@ -115,6 +119,7 @@ import CommandPalette from '@/shared/components/command-palette.vue'
 import { useCommands } from '@/shared/composables/useCommands'
 import { useAuthApi } from '@/shared/composables/useAuthApi'
 import LoginModal from '@/shared/components/login-modal.vue'
+import GithubDeviceDialog from '@/shared/components/github-device-dialog.vue'
 import ToastContainer from '@/shared/components/toast-container.vue'
 import { useToast } from '@/shared/composables/useToast'
 import { useUiStore } from '@/stores/use-ui-store'
@@ -127,6 +132,7 @@ const userMenuRef = ref(null)
 let userMenuCloseTimer = null
 const loginEnabled = ref(false)
 const loginModalVisible = ref(false)
+const githubDialogVisible = ref(false)
 const onRefresh = () => window.dispatchEvent(new CustomEvent('knews:refresh-feed'))
 const { commands, query } = useCommands({ onRefresh })
 const { toasts, dismiss, success } = useToast()
@@ -229,7 +235,7 @@ const loginWithGithub = async () => {
     }
     githubUserCode.value = initiated.user_code
 
-    // auto-copy happens inside login-modal via watch on githubUserCode prop
+    // auto-copy happens inside github-device-dialog via watch on userCode prop
     githubPolling.value = true
 
     // Wait 5s, then open browser for user to authorize
@@ -257,7 +263,7 @@ const loginWithGithub = async () => {
       })
       syncAuthToken()
       success('GitHub login successful')
-      loginModalVisible.value = false
+      githubDialogVisible.value = false
     }
   } catch (err) {
     githubPolling.value = false
@@ -265,13 +271,21 @@ const loginWithGithub = async () => {
   }
 }
 
-const cancelGithubLogin = () => {
+const cancelGithubLogin = async () => {
+  try { await window.api.auth.cancelGithub() } catch {}
   githubPolling.value = false
   githubError.value = ''
   githubUserCode.value = ''
+  githubDialogVisible.value = false
+}
+
+const onGithubDialogCancel = () => {
+  cancelGithubLogin()
 }
 
 const onModalGithubLogin = () => {
+  loginModalVisible.value = false
+  githubDialogVisible.value = true
   loginWithGithub()
 }
 
