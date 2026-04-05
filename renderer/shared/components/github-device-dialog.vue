@@ -22,7 +22,7 @@
             </div>
           </template>
           <p v-if="userCode" class="device-dialog-instructions">
-            浏览器已自动打开验证页面。<br>
+            浏览器将在3-5s后自动打开验证页面。<br>
             如果没有自动打开，请手动访问：
             <a href="https://github.com/login/device" target="_blank" rel="noreferrer" class="device-link">github.com/login/device</a>
           </p>

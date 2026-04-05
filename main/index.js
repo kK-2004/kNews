@@ -137,6 +137,7 @@ function registerIpcHandlers(ipcMain, deps) {
     authContext: deps.authContext,
     sessionPersistence: deps.sessionPersistence,
     supabase: deps.supabase,
+    mainWindow,
   });
 
   registerFeedHandlers(ipcMain, {
