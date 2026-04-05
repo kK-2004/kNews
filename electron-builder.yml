@@ -1,0 +1,20 @@
+appId: com.knews.desktop
+productName: kNews
+directories:
+  buildResources: build
+  output: dist
+files:
+  - main/**/*
+  - preload/**/*
+  - core/**/*
+  - database/**/*
+  - config/**/*
+  - renderer-dist/**/*
+  - package.json
+mac:
+  target:
+    - dmg
+  category: public.app-category.news
+win:
+  target:
+    - nsis

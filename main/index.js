@@ -1,0 +1,265 @@
+'use strict';
+
+const { app, BrowserWindow, dialog } = require('electron');
+const path = require('path');
+const url = require('url');
+
+require('dotenv').config();
+
+const { bootstrap } = require('./bootstrap');
+
+// IPC handler registrations
+const { register: registerAuthHandlers } = require('./ipc/auth.handler');
+const { register: registerFeedHandlers } = require('./ipc/feeds.handler');
+const { register: registerSourceHandlers } = require('./ipc/sources.handler');
+const { register: registerScraperHandlers } = require('./ipc/scraper.handler');
+const { register: registerUserHandlers } = require('./ipc/user.handler');
+const { register: registerAdminHandlers } = require('./ipc/admin.handler');
+const { register: registerUserActionHandlers } = require('./ipc/user-actions.handler');
+const { register: registerMcpHandlers } = require('./ipc/mcp.handler');
+
+let mainWindow = null;
+let instances = null;
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 1024,
+    minHeight: 700,
+    webPreferences: {
+      preload: path.join(__dirname, '..', 'preload', 'index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  mainWindow.loadFile(path.join(__dirname, '..', 'renderer-dist', 'index.html'));
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+// --- Deep Link (knews://) ---
+
+const PROTOCOL = 'knews';
+
+function registerDeepLinkProtocol() {
+  if (process.defaultApp) {
+    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+  } else {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+  }
+}
+
+async function handleDeepLinkCallback(deepLinkUrl) {
+  try {
+    console.log('[deep-link] Received URL:', deepLinkUrl);
+
+    if (!deepLinkUrl.startsWith(`${PROTOCOL}://auth/callback`)) {
+      console.warn('[deep-link] URL does not match expected path');
+      return;
+    }
+
+    // Supabase puts tokens in hash fragment (#), not query string (?)
+    // e.g. knews://auth/callback#access_token=eyJ...&refresh_token=xxx
+    const hashIndex = deepLinkUrl.indexOf('#');
+    const fragment = hashIndex !== -1 ? deepLinkUrl.slice(hashIndex + 1) : '';
+    const parsed = url.parse(deepLinkUrl, true);
+    const params = { ...parsed.query, ...Object.fromEntries(new URLSearchParams(fragment)) };
+
+    if (params.error) {
+      console.warn('[deep-link] Auth error:', params.error, params.error_description);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('auth:magic-link-error', params.error_description || params.error);
+      }
+      return;
+    }
+
+    const { access_token, refresh_token } = params;
+    if (!access_token || !refresh_token) {
+      console.warn('[deep-link] Missing tokens in callback URL. Params:', params);
+      return;
+    }
+
+    if (!instances) {
+      console.warn('[deep-link] App not ready, ignoring callback');
+      return;
+    }
+
+    const { authContext, sessionPersistence } = instances;
+    const strategy = authContext.createStrategy('magic-link');
+    const userInfo = await strategy.validate({ token: access_token, refreshToken: refresh_token });
+    const user = await strategy.syncUser(userInfo);
+    const session = await strategy.createSession({ ...userInfo, id: user.id, level: user.level });
+
+    if (sessionPersistence && session) {
+      await sessionPersistence.saveSession(session);
+    }
+    authContext.session = session;
+
+    console.log('[deep-link] Magic Link login successful');
+
+    // Notify renderer
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('auth:magic-link-success', session);
+    }
+  } catch (err) {
+    console.error('[deep-link] Error handling callback:', err.message);
+  }
+}
+
+registerDeepLinkProtocol();
+
+// Windows: deep link from first-instance command line (captured before ready)
+const pendingDeepLink = process.argv.find((arg) => arg.startsWith(`${PROTOCOL}://`));
+
+// Windows: handle deep link when app is already running (second instance)
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const deepLink = argv.find((arg) => arg.startsWith(`${PROTOCOL}://`));
+    if (deepLink) {
+      handleDeepLinkCallback(deepLink);
+    }
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
+function registerIpcHandlers(ipcMain, deps) {
+  registerAuthHandlers(ipcMain, {
+    authContext: deps.authContext,
+    sessionPersistence: deps.sessionPersistence,
+    supabase: deps.supabase,
+  });
+
+  registerFeedHandlers(ipcMain, {
+    feedService: deps.feedService,
+  });
+
+  registerSourceHandlers(ipcMain, {
+    sourceService: deps.sourceService,
+  });
+
+  registerScraperHandlers(ipcMain, {
+    scraperEngine: deps.scraperEngine,
+    authContext: deps.authContext,
+  });
+
+  registerUserHandlers(ipcMain, {
+    userRepo: deps.userRepo,
+    userService: deps.userService,
+  });
+
+  registerAdminHandlers(ipcMain, {
+    sourceRepo: deps.sourceRepo,
+    userRepo: deps.userRepo,
+    apiKeyRepo: deps.apiKeyRepo,
+  });
+
+  registerUserActionHandlers(ipcMain, {});
+
+  registerMcpHandlers(ipcMain, {
+    mcpServer: deps.mcpServer,
+  });
+}
+
+async function cleanup() {
+  console.log('[main] Cleaning up...');
+
+  if (instances) {
+    if (instances.scraperEngine) {
+      console.log('[main] Stopping ScraperEngine...');
+      instances.scraperEngine.stop();
+    }
+
+    if (instances.mcpServer) {
+      console.log('[main] Stopping McpServer...');
+      try {
+        await instances.mcpServer.stop();
+      } catch (err) {
+        console.error('[main] Error stopping McpServer:', err.message);
+      }
+    }
+
+    instances = null;
+  }
+}
+
+app.whenReady().then(async () => {
+  try {
+    // Bootstrap the application with Electron APIs
+    instances = await bootstrap({
+      safeStorage: require('electron').safeStorage,
+      shell: require('electron').shell,
+    });
+
+    // Register IPC handlers with bootstrapped instances
+    const { ipcMain } = require('electron');
+    registerIpcHandlers(ipcMain, instances);
+
+    // Handle deep link from Windows first-instance startup
+    if (pendingDeepLink) {
+      handleDeepLinkCallback(pendingDeepLink);
+    }
+  } catch (err) {
+    console.error('[main] Bootstrap failed:', err.message);
+    dialog.showErrorBox('Startup Error', err.message);
+    app.quit();
+    return;
+  }
+
+  createWindow();
+
+  // macOS: handle deep link when app is already running
+  app.on('open-url', (event, urlStr) => {
+    event.preventDefault();
+    handleDeepLinkCallback(urlStr);
+  });
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+let isQuitting = false;
+
+app.on('before-quit', (event) => {
+  if (isQuitting) return;
+
+  if (instances) {
+    event.preventDefault();
+    isQuitting = true;
+
+    // Force-quit after 5s regardless of cleanup progress
+    const forceTimer = setTimeout(() => {
+      console.warn('[main] Cleanup timeout, forcing quit');
+      app.exit(0);
+    }, 5000);
+
+    cleanup()
+      .then(() => {
+        clearTimeout(forceTimer);
+        app.quit();
+      })
+      .catch((err) => {
+        clearTimeout(forceTimer);
+        console.error('[main] Cleanup error:', err);
+        app.quit();
+      });
+  }
+});

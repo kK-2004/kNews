@@ -1,0 +1,47 @@
+{
+  "name": "knews-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "kNews - Desktop news reader powered by Electron",
+  "main": "main/index.js",
+  "scripts": {
+    "dev": "npm run build:renderer && electron .",
+    "build:renderer": "vite build",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win"
+  },
+  "dependencies": {
+    "@formkit/auto-animate": "^0.9.0",
+    "@supabase/supabase-js": "^2.49.4",
+    "@vueuse/core": "^14.2.1",
+    "@vueuse/motion": "^3.0.3",
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.4.7",
+    "echarts": "^6.0.0",
+    "element-plus": "^2.13.6",
+    "jose": "^5.9.6",
+    "p-limit": "^6.2.0",
+    "pinia": "^3.0.4",
+    "pinia-plugin-persistedstate": "^4.7.1",
+    "unocss": "^66.6.7",
+    "vue": "^3.5.32",
+    "vue-router": "^5.0.4"
+  },
+  "devDependencies": {
+    "@iconify-json/tabler": "^1.2.33",
+    "@vitejs/plugin-vue": "^5.2.3",
+    "electron": "^35.1.5",
+    "electron-builder": "^26.0.12",
+    "unplugin-auto-import": "^19.1.2",
+    "unplugin-vue-components": "^28.4.1",
+    "vite": "^6.3.2"
+  },
+  "license": "MIT",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "electron-winstaller"
+    ]
+  }
+}
