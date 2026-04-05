@@ -6,3 +6,6 @@ renderer-dist
 .DS_Store
 dist
 kNews/
+openspec/
+.claude/
+.codex/
