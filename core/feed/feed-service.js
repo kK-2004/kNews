@@ -47,6 +47,21 @@ class FeedService {
     }
     return data;
   }
+
+  /**
+   * Get cached feed data for multiple sources in one call.
+   * Returns { [sourceId]: items[] } without triggering scrapes.
+   * @param {string[]} sourceIds
+   * @returns {Promise<Object<string, any[]>>}
+   */
+  async getCachedBatch(sourceIds) {
+    const result = {};
+    for (const id of sourceIds) {
+      const data = await this.feedRepository.findCached(id);
+      result[id] = data || [];
+    }
+    return result;
+  }
 }
 
 module.exports = FeedService;

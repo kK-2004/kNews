@@ -36,10 +36,13 @@ class UserService {
     }
 
     if (user) {
-      // Update existing user with provided fields
-      const updateData = { nickname };
-      if (github_id) updateData.github_id = github_id;
-      if (email) updateData.email = email;
+      // Only update fields that actually changed
+      const updateData = {};
+      if (nickname && nickname !== user.nickname) updateData.nickname = nickname;
+      if (github_id && github_id !== user.github_id) updateData.github_id = github_id;
+      if (email && email !== user.email) updateData.email = email;
+
+      if (Object.keys(updateData).length === 0) return user;
 
       return await this.userRepository.update(user.id, updateData);
     }

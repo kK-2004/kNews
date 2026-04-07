@@ -5,7 +5,6 @@ renderer-dist
 !.env.example
 .DS_Store
 dist
-kNews/
 openspec/
 .claude/
 .codex/

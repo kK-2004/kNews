@@ -37,6 +37,14 @@ class FeedRepository {
     this.localCache.write(sourceId, data);
     return { sourceId, data };
   }
+
+  /**
+   * Delete cached data for a source.
+   * @param {string} sourceId
+   */
+  async deleteCache(sourceId) {
+    this.localCache.remove(sourceId);
+  }
 }
 
 module.exports = FeedRepository;

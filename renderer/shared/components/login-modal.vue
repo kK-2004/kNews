@@ -86,6 +86,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useToast } from '@/shared/composables/useToast'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -98,6 +99,7 @@ const sending = ref(false)
 const emailSent = ref(false)
 const errorMsg = ref('')
 const cooldown = ref(0)
+const toast = useToast()
 
 let cooldownTimer = null
 
@@ -125,12 +127,14 @@ const sendMagicLink = async () => {
     const result = await window.api.auth.sendMagicLink(email.value)
     if (result?.error) {
       errorMsg.value = result.error
+      toast.error(result.error)
       return
     }
     emailSent.value = true
     startCooldown()
   } catch {
     errorMsg.value = '发送失败，请稍后重试'
+    toast.error(errorMsg.value)
   } finally {
     sending.value = false
   }
@@ -146,7 +150,9 @@ const onMagicLinkSuccess = async (session) => {
 }
 
 const onMagicLinkError = (message) => {
-  errorMsg.value = message || '链接无效或已过期，请重新发送'
+  const msg = message || '链接无效或已过期，请重新发送'
+  errorMsg.value = msg
+  toast.error(msg)
   emailSent.value = false
 }
 

@@ -113,6 +113,7 @@ import { useUserStore } from '@/stores/use-user-store'
 import { useHomeBoardStore } from '@/stores/use-home-board-store'
 
 const loadingMore = ref(false)
+let cachedSources = null
 const boardGridRef = ref(null)
 const dragSourceId = ref('')
 const dropTargetId = ref('')
@@ -313,10 +314,12 @@ const requestJsonWithRetry = async (url, { retries = 2, delay = 220 } = {}) => {
 }
 
 const fetchSourcesList = async () => {
+  if (cachedSources) return cachedSources
   try {
     const data = await window.api.sources.list()
     if (data?.error) throw new Error(data.error)
-    return Array.isArray(data) ? data : []
+    cachedSources = Array.isArray(data) ? data : []
+    return cachedSources
   } catch {
     return []
   }
@@ -337,6 +340,16 @@ const fetchSourceItems = async (id, { latest = false } = {}) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'fetch failed'
     return { source: { id }, items: [], warning: message, status: 'error', updatedTime: 0 }
+  }
+}
+
+const fetchBatchSourceItems = async (sourceIds) => {
+  try {
+    const data = await window.api.feeds.getCachedBatch(sourceIds)
+    if (data?.error) throw new Error(data.error)
+    return data
+  } catch {
+    return {}
   }
 }
 
@@ -395,48 +408,79 @@ const silentRefreshLoadedBoards = async () => {
   patchBoardsFromResponses(refreshed)
 }
 
+const resolveSelectedSources = (enabled) => {
+  const map = Object.fromEntries(enabled.map((item) => [item.id, item]))
+  if (activeTab.value === 'china') {
+    allEnabledSources.value = enabled
+  } else {
+    allEnabledSources.value = []
+  }
+  let selected = []
+  if (activeTab.value === 'focus') {
+    const selectedIds = applyOrder(followedSourceIds.value)
+    selected = selectedIds.map((id) => map[id]).filter(Boolean)
+  } else if (activeTab.value === 'china') {
+    const keyword = String(debouncedKeyword.value || '').trim().toLowerCase()
+    const category = String(moreCategory.value || 'all')
+    selected = enabled.filter((item) => {
+      const sourceCategory = normalizeCategory(item.category || item.column)
+      const matchCategory = category === 'all' || sourceCategory === category
+      const matchKeyword = !keyword
+        || String(item.name || '').toLowerCase().includes(keyword)
+        || String(item.id || '').toLowerCase().includes(keyword)
+      return matchCategory && matchKeyword
+    })
+    selected = sortByCategoryThenName(selected)
+  } else {
+    const selectedIds = applyOrder(preferredSourceIds.value)
+    selected = selectedIds.map((id) => map[id]).filter(Boolean)
+  }
+  return selected
+}
+
 const buildBoards = async ({ runSilentRefresh = true } = {}) => {
-  homeBoardStore.setLoading(true)
   homeBoardStore.setError('')
   try {
     const sources = await fetchSourcesList()
     const enabled = (sources || []).filter((s) => normalizeEnabled(s.enabled))
-    const map = Object.fromEntries(enabled.map((item) => [item.id, item]))
-    let selected = []
-    if (activeTab.value === 'china') {
-      allEnabledSources.value = enabled
-    } else {
-      allEnabledSources.value = []
-    }
-    if (activeTab.value === 'focus') {
-      const selectedIds = applyOrder(followedSourceIds.value)
-      selected = selectedIds.map((id) => map[id]).filter(Boolean)
-    } else if (activeTab.value === 'china') {
-      const keyword = String(debouncedKeyword.value || '').trim().toLowerCase()
-      const category = String(moreCategory.value || 'all')
-      selected = enabled.filter((item) => {
-        const sourceCategory = normalizeCategory(item.category || item.column)
-        const matchCategory = category === 'all' || sourceCategory === category
-        const matchKeyword = !keyword
-          || String(item.name || '').toLowerCase().includes(keyword)
-          || String(item.id || '').toLowerCase().includes(keyword)
-        return matchCategory && matchKeyword
-      })
-      selected = sortByCategoryThenName(selected)
-    } else {
-      const selectedIds = applyOrder(preferredSourceIds.value)
-      selected = selectedIds.map((id) => map[id]).filter(Boolean)
-    }
+    const selected = resolveSelectedSources(enabled)
     homeBoardStore.setAllSelectedSources(selected)
-    homeBoardStore.setBoards([])
-    if (allSelectedSources.value.length) {
-      await appendBoards({ latest: false, count: INITIAL_LOAD_SIZE })
-      // In Electron mode, ScraperEngine handles periodic refresh; skip silent refresh to avoid flickering
+
+    if (!selected.length) {
+      homeBoardStore.setBoards([])
+      homeBoardStore.setLoading(false)
+      homeBoardStore.setLastBuiltTab(activeTab.value)
+      return
     }
+
+    // Batch fetch cached feeds in one IPC call
+    const batchIds = selected.slice(0, INITIAL_LOAD_SIZE).map((s) => s.id)
+    const batchData = await fetchBatchSourceItems(batchIds)
+    const chunk = selected.slice(0, INITIAL_LOAD_SIZE)
+    const hasAllCached = chunk.every((source) => {
+      const items = batchData[source.id]
+      return Array.isArray(items) && items.length > 0
+    })
+
+    if (hasAllCached) {
+      // Show cached data immediately, fetch missing in background
+      const batchBoards = chunk.map((source, idx) => {
+        const items = batchData[source.id] || []
+        return toBoard(source, idx, { status: 'fulfilled', value: { items, updatedTime: Date.now(), status: 'success', warning: '' } })
+      })
+      homeBoardStore.setBoards(batchBoards)
+      void silentRefreshLoadedBoards()
+    } else {
+      // Nothing cached — show skeleton, fetch normally
+      homeBoardStore.setBoards([])
+      homeBoardStore.setLoading(true)
+      await appendBoards({ latest: false, count: INITIAL_LOAD_SIZE })
+      homeBoardStore.setLoading(false)
+    }
+
     homeBoardStore.setLastBuiltTab(activeTab.value)
   } catch (err) {
     homeBoardStore.setError(err instanceof Error ? err.message : 'Failed to load source boards')
-  } finally {
     homeBoardStore.setLoading(false)
   }
 }
@@ -477,6 +521,7 @@ const refreshAll = async () => {
   }
 }
 const onGlobalRefresh = async () => {
+  cachedSources = null
   homeBoardStore.setLoading(true)
   try {
     await window.api.scraper.refreshAll()
@@ -636,9 +681,17 @@ watch(moreKeyword, () => {
   debouncedUpdateKeyword()
 })
 
-watch(() => userStore.authToken, async () => {
+watch(() => userStore.authToken, async (newToken) => {
+  const prevFollowed = [...followedSourceIds.value]
   await loadPreferences()
-  await buildBoards()
+  // On login with remote preferences, rebuild focus boards if followed sources changed.
+  // On logout, preferences fall back to local (same values) — skip rebuild to avoid flicker.
+  if (newToken && activeTab.value === 'focus') {
+    const currFollowed = followedSourceIds.value
+    const changed = prevFollowed.length !== currFollowed.length
+      || prevFollowed.some((id, i) => id !== currFollowed[i])
+    if (changed) await buildBoards()
+  }
 })
 
 onMounted(() => {

@@ -5,7 +5,7 @@
   "description": "kNews - Desktop news reader powered by Electron",
   "main": "main/index.js",
   "scripts": {
-    "dev": "npm run build:renderer && electron .",
+    "dev": "npm run build:renderer && NODE_ENV=development electron .",
     "build:renderer": "vite build",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win"

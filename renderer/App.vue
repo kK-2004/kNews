@@ -33,7 +33,8 @@
           <span v-else-if="uiStore.theme === 'light'" class="i-tabler-sun" aria-hidden="true"></span>
           <span v-else class="i-tabler-device-desktop" aria-hidden="true"></span>
         </button>
-        <button v-if="isHomeRoute" class="refresh-btn" type="button" @click="onRefresh">一键刷新</button>
+        <button v-if="isHomeRoute && canRefresh" class="refresh-btn" type="button" @click="onRefresh">一键刷新</button>
+        <button v-else-if="isHomeRoute && isLoggedIn" class="refresh-btn" type="button" @click="showUpgradeHint">一键刷新</button>
       </nav>
       <div
         ref="userMenuRef"
@@ -135,10 +136,12 @@ const loginModalVisible = ref(false)
 const githubDialogVisible = ref(false)
 const onRefresh = () => window.dispatchEvent(new CustomEvent('knews:refresh-feed'))
 const { commands, query } = useCommands({ onRefresh })
-const { toasts, dismiss, success } = useToast()
+const { toasts, dismiss, success, warning, error } = useToast()
 const authApi = useAuthApi()
 const uiStore = useUiStore()
 const userStore = useUserStore()
+const canRefresh = computed(() => isLoggedIn.value && (userStore.profile?.level ?? 0) >= 1)
+const showUpgradeHint = () => warning('升级订阅后可使用一键刷新功能')
 const route = useRoute()
 const router = useRouter()
 const media = typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)') : null
@@ -259,10 +262,11 @@ const loginWithGithub = async () => {
           login: session.nickname || '',
           userId: session.userId,
           level: session.level ?? 0,
+          avatar: `https://avatars.githubusercontent.com/` + session.nickname
         }
       })
       syncAuthToken()
-      success('GitHub login successful')
+      success('登录成功')
       githubDialogVisible.value = false
     }
   } catch (err) {
