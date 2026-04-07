@@ -4,7 +4,7 @@ const { app, BrowserWindow, dialog } = require('electron');
 const path = require('path');
 const url = require('url');
 
-require('dotenv').config();
+require('dotenv').config({ path: path.resolve(process.cwd(), `.env${process.env.NODE_ENV ? `.${process.env.NODE_ENV}` : ''}`) });
 
 const { bootstrap } = require('./bootstrap');
 
@@ -162,11 +162,14 @@ function registerIpcHandlers(ipcMain, deps) {
   registerScraperHandlers(ipcMain, {
     scraperEngine: deps.scraperEngine,
     authContext: deps.authContext,
+    localCache: deps.localCache,
   });
 
   registerUserHandlers(ipcMain, {
     userRepo: deps.userRepo,
     userService: deps.userService,
+    prefRepo: deps.prefRepo,
+    authContext: deps.authContext,
   });
 
   registerAdminHandlers(ipcMain, {

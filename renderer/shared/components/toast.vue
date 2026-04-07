@@ -34,8 +34,10 @@ const runAction = () => {
 
 <style scoped>
 .toast {
-  animation: slide-in .2s ease;
   background: color-mix(in srgb, var(--surface) 88%, transparent);
+  margin: auto;
+  max-width: min(92vw, 20rem);
+  width: 20rem;
   border: 1px solid var(--border);
   border-radius: 0.7rem;
   box-shadow: 0 10px 28px rgb(0 0 0 / 18%);
@@ -112,9 +114,4 @@ const runAction = () => {
   background: color-mix(in srgb, #2e90fa 18%, transparent);
 }
 .toast-info .icon { color: #2e90fa; }
-
-@keyframes slide-in {
-  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
 </style>

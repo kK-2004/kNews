@@ -16,16 +16,18 @@ const DEFAULT_CONCURRENCY = 5;
 class ScraperEngine {
   /**
    * @param {object} options
-   * @param {Array<object>}  [options.sources]        - Source definitions
-   * @param {object}         options.feedRepository   - FeedRepository instance
-   * @param {object}         [options.localCache]     - LocalCacheRepository instance
-   * @param {number}         [options.interval]       - Refresh interval in ms (default 3600000)
-   * @param {number}         [options.concurrency]    - Max parallel fetches (default 5)
+   * @param {Array<object>}  [options.sources]          - Source definitions
+   * @param {object}         options.feedRepository     - FeedRepository instance
+   * @param {object}         [options.sourceRepository] - SourceRepository instance (DB) for enabled status
+   * @param {object}         [options.localCache]       - LocalCacheRepository instance
+   * @param {number}         [options.interval]         - Refresh interval in ms (default 3600000)
+   * @param {number}         [options.concurrency]      - Max parallel fetches (default 5)
    */
   constructor(options = {}) {
     const {
       sources = defaultSources,
       feedRepository,
+      sourceRepository,
       localCache,
       interval = DEFAULT_INTERVAL,
       concurrency = DEFAULT_CONCURRENCY,
@@ -42,6 +44,7 @@ class ScraperEngine {
     }
 
     this.feedRepository = feedRepository;
+    this.sourceRepository = sourceRepository;
     this.localCache = localCache;
     this.interval = interval;
     this.concurrency = concurrency;
@@ -145,11 +148,42 @@ class ScraperEngine {
 
   /**
    * Refresh all enabled sources with concurrency control.
+   * Also cleans local cache for sources disabled in DB.
+   * @param {{ force?: boolean }} [options] - force=true skips cache staleness check (for manual refresh)
    */
-  async refreshAll() {
-    const enabledSources = [...this.sources.values()].filter(
-      (s) => s.enabled !== false,
-    );
+  async refreshAll({ force = false } = {}) {
+    // Build enabled set from DB (fall back to local defs if no sourceRepository)
+    let dbSourceMap = null;
+    if (this.sourceRepository) {
+      try {
+        const dbSources = await this.sourceRepository.findAll();
+        dbSourceMap = new Map(dbSources.map((s) => [s.id, s.enabled]));
+      } catch (err) {
+        console.error(`[ScraperEngine] Failed to query source status: ${err.message}`);
+      }
+    }
+
+    const enabledSources = [];
+    const disabledSourceIds = [];
+
+    for (const source of this.sources.values()) {
+      // DB status takes precedence; fall back to local enabled field
+      const isEnabled = dbSourceMap ? dbSourceMap.get(source.id) !== false : source.enabled !== false;
+      if (isEnabled) {
+        enabledSources.push(source);
+      } else {
+        disabledSourceIds.push(source.id);
+      }
+    }
+
+    // Clean cache for disabled sources
+    for (const sourceId of disabledSourceIds) {
+      const cached = this.localCache && this.localCache.read(sourceId);
+      if (cached) {
+        await this.feedRepository.deleteCache(sourceId);
+        console.log(`[ScraperEngine] Cleaned cache for disabled source: ${sourceId}`);
+      }
+    }
 
     console.log(
       `[ScraperEngine] Refreshing ${enabledSources.length}/${this.sources.size} sources`,
@@ -157,7 +191,7 @@ class ScraperEngine {
 
     const limit = pLimit(this.concurrency);
     const tasks = enabledSources.map((source) =>
-      limit(() => this.refreshOne(source.id)),
+      limit(() => this.refreshOne(source.id, { force })),
     );
 
     await Promise.allSettled(tasks);
@@ -165,13 +199,38 @@ class ScraperEngine {
 
   /**
    * Refresh a single source by ID and save to local cache.
+   * Skips fetch if cache is fresh (< staleMs). Set force=true to override
+   * (used by "一键刷新" button via IPC scraper:refreshOne).
    */
-  async refreshOne(sourceId) {
+  async refreshOne(sourceId, { force = false, staleMs = 3600000 } = {}) {
     const source = this.sources.get(sourceId);
 
     if (!source) {
       console.error(`[ScraperEngine] Unknown source: ${sourceId}`);
       return { sourceId, count: 0, error: `Unknown source: ${sourceId}` };
+    }
+
+    // Check DB enabled status
+    if (this.sourceRepository) {
+      try {
+        const dbSource = await this.sourceRepository.findById(sourceId);
+        if (dbSource && dbSource.enabled === false) {
+          const cached = this.localCache && this.localCache.read(sourceId);
+          if (cached) {
+            await this.feedRepository.deleteCache(sourceId);
+            console.log(`[ScraperEngine] Cleaned cache for disabled source: ${sourceId}`);
+          }
+          return { sourceId, count: 0, error: null, disabled: true };
+        }
+      } catch (err) {
+        console.error(`[ScraperEngine] Failed to check source status: ${err.message}`);
+      }
+    }
+
+    // Skip if cache is fresh (unless force=true from manual refresh button)
+    if (!force && this.localCache && !this.localCache.isStale(sourceId, staleMs)) {
+      const cached = this.localCache.read(sourceId);
+      return { sourceId, count: cached?.data?.length || 0, error: null, skipped: true };
     }
 
     try {

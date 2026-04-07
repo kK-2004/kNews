@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld("api", {
     get: (options) => ipcRenderer.invoke("feeds:get", options),
     getBySource: (sourceId, options) =>
       ipcRenderer.invoke("feeds:getBySource", sourceId, options),
+    getCachedBatch: (sourceIds) =>
+      ipcRenderer.invoke("feeds:getCachedBatch", sourceIds),
   },
 
   sources: {
@@ -41,6 +43,7 @@ contextBridge.exposeInMainWorld("api", {
     refreshAll: () => ipcRenderer.invoke("scraper:refreshAll"),
     refreshOne: (sourceId) => ipcRenderer.invoke("scraper:refreshOne", sourceId),
     getStatus: () => ipcRenderer.invoke("scraper:getStatus"),
+    cacheStatus: (sourceIds) => ipcRenderer.invoke("scraper:cacheStatus", sourceIds),
   },
 
   user: {

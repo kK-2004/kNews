@@ -17,6 +17,7 @@ const ScraperEngine = require('../core/scraper/scraper-engine');
 const { sources } = require('../core/scraper/sources');
 const McpServer = require('../core/mcp/mcp-server');
 const LocalCacheRepository = require('../core/cache/local-cache-repository');
+const PreferenceRepository = require('../core/preference/preference-repository');
 
 /**
  * Application bootstrap – wires every layer together.
@@ -33,15 +34,17 @@ async function bootstrap({ safeStorage, shell }) {
   console.log('[bootstrap] Connecting to Supabase...');
   const supabase = await getSupabase();
 
-  // 2. Verify database tables
-  console.log('[bootstrap] Verifying database tables...');
-  const dbStatus = await initDatabase(supabase);
-  if (!dbStatus.ok) {
-    console.error('[bootstrap] Database verification failed. Missing tables:', dbStatus.missing);
-    throw new Error(
-      `Database tables missing: ${dbStatus.missing.join(', ')}. ` +
-      'Run migrations via the Supabase SQL editor or CLI.',
-    );
+  // 2. Verify database tables (only in dev when DB_CHECK=true)
+  if (process.env.DB_CHECK === 'true') {
+    console.log('[bootstrap] Verifying database tables...');
+    const dbStatus = await initDatabase(supabase);
+    if (!dbStatus.ok) {
+      console.error('[bootstrap] Database verification failed. Missing tables:', dbStatus.missing);
+      throw new Error(
+        `Database tables missing: ${dbStatus.missing.join(', ')}. ` +
+        'Run migrations via the Supabase SQL editor or CLI.',
+      );
+    }
   }
 
   // 3. Local cache
@@ -53,6 +56,7 @@ async function bootstrap({ safeStorage, shell }) {
   const feedRepo = new FeedRepository(localCache);
   const apiKeyRepo = new ApiKeyRepository(supabase);
   const settingsRepo = new SettingsRepository(supabase);
+  const prefRepo = new PreferenceRepository(supabase, localCache);
 
   // 5. Services
   const userService = new UserService(userRepo);
@@ -62,6 +66,7 @@ async function bootstrap({ safeStorage, shell }) {
   const scraperEngine = new ScraperEngine({
     sources,
     feedRepository: feedRepo,
+    sourceRepository: sourceRepo,
     localCache,
   });
 
@@ -136,6 +141,7 @@ async function bootstrap({ safeStorage, shell }) {
     apiKeyRepo,
     settingsRepo,
     userService,
+    prefRepo,
     sourceService,
     feedService,
     authContext,

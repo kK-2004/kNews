@@ -27,6 +27,15 @@ function register(ipcMain, { feedService }) {
       return { error: err.message };
     }
   });
+
+  ipcMain.handle('feeds:getCachedBatch', async (_event, sourceIds) => {
+    try {
+      const ids = Array.isArray(sourceIds) ? sourceIds : [];
+      return await feedService.getCachedBatch(ids);
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
 }
 
 module.exports = { register };
