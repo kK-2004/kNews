@@ -259,10 +259,11 @@ const loginWithGithub = async () => {
           login: session.nickname || '',
           userId: session.userId,
           level: session.level ?? 0,
+          avatar: `https://avatars.githubusercontent.com/` + session.nickname
         }
       })
       syncAuthToken()
-      success('GitHub login successful')
+      success('登录成功')
       githubDialogVisible.value = false
     }
   } catch (err) {

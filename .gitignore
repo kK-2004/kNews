@@ -5,4 +5,3 @@ renderer-dist
 !.env.example
 .DS_Store
 dist
-kNews/

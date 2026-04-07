@@ -41,6 +41,18 @@ function createWindow() {
   });
 }
 
+// --- Window helpers ---
+
+function focusMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  if (process.platform === 'darwin') {
+    app.focus({ steal: true });
+  }
+}
+
 // --- Deep Link (knews://) ---
 
 const PROTOCOL = 'knews';
@@ -101,9 +113,10 @@ async function handleDeepLinkCallback(deepLinkUrl) {
 
     console.log('[deep-link] Magic Link login successful');
 
-    // Notify renderer
+    // Notify renderer + bring window to front
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('auth:magic-link-success', session);
+      focusMainWindow();
     }
   } catch (err) {
     console.error('[deep-link] Error handling callback:', err.message);
@@ -125,10 +138,7 @@ if (!gotTheLock) {
     if (deepLink) {
       handleDeepLinkCallback(deepLink);
     }
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    focusMainWindow();
   });
 }
 
@@ -138,6 +148,7 @@ function registerIpcHandlers(ipcMain, deps) {
     sessionPersistence: deps.sessionPersistence,
     supabase: deps.supabase,
     mainWindow,
+    focusMainWindow,
   });
 
   registerFeedHandlers(ipcMain, {

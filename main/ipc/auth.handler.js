@@ -14,7 +14,7 @@
  * @param {Electron.IpcMain} ipcMain
  * @param {Object} deps
  */
-function register(ipcMain, { authContext, sessionPersistence, supabase, mainWindow }) {
+function register(ipcMain, { authContext, sessionPersistence, supabase, mainWindow, focusMainWindow }) {
   // --- GitHub Device Flow (split into initiate + complete) ---
   let pendingDeviceFlow = null;
 
@@ -73,10 +73,7 @@ function register(ipcMain, { authContext, sessionPersistence, supabase, mainWind
       authContext.session = session;
       pendingDeviceFlow = null;
 
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.focus();
-      }
+      if (focusMainWindow) focusMainWindow();
 
       console.log('[auth] GitHub login successful');
       return session;
