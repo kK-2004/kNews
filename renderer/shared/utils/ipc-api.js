@@ -100,6 +100,9 @@ export const adminApi = {
   listDatasources() {
     return ensureApi().admin.listDatasources().catch(wrapError)
   },
+  createApiKey(payload) {
+    return ensureApi().admin.createApiKey(payload).catch(wrapError)
+  },
   createDatasource(payload) {
     return ensureApi().admin.createDatasource(payload).catch(wrapError)
   },

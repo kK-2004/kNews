@@ -18,6 +18,9 @@ const { sources } = require('../core/scraper/sources');
 const McpServer = require('../core/mcp/mcp-server');
 const LocalCacheRepository = require('../core/cache/local-cache-repository');
 const PreferenceRepository = require('../core/preference/preference-repository');
+const SubscriptionRepository = require('../core/subscription/subscription-repository');
+const PaymentService = require('../core/subscription/payment-service');
+const SubscriptionService = require('../core/subscription/subscription-service');
 
 /**
  * Application bootstrap – wires every layer together.
@@ -61,6 +64,14 @@ async function bootstrap({ safeStorage, shell }) {
   // 5. Services
   const userService = new UserService(userRepo);
   const sourceService = new SourceService(sourceRepo);
+  const subscriptionRepo = new SubscriptionRepository(supabase);
+  const paymentService = new PaymentService();
+  const subscriptionService = new SubscriptionService({
+    subscriptionRepo,
+    paymentService,
+    userRepo,
+    apiKeyRepo,
+  });
 
   // 6. ScraperEngine (created before FeedService so we can pass it)
   const scraperEngine = new ScraperEngine({
@@ -149,6 +160,7 @@ async function bootstrap({ safeStorage, shell }) {
     scraperEngine,
     mcpServer,
     localCache,
+    subscriptionService,
   };
 }
 

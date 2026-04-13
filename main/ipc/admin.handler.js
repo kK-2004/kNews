@@ -1,12 +1,26 @@
 'use strict';
 
+const crypto = require('node:crypto');
+
+const HASH_SALT = 'knews_api_key_salt';
+
+const LEVEL_PERMISSIONS = {
+  0: { rate_limit: 3, max_count: 5 },
+  1: { rate_limit: 20, max_count: 10 },
+  2: { rate_limit: -1, max_count: 50 },
+};
+
+function hashApiKey(apiKey) {
+  return crypto.createHash('sha256').update(String(apiKey) + HASH_SALT).digest('hex');
+}
+
 /**
  * Register IPC handlers for admin operations.
  *
  * @param {Electron.IpcMain} ipcMain
  * @param {Object} deps
  */
-function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo }) {
+function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, authContext }) {
   // --- Datasources ---
 
   ipcMain.handle('admin:listDatasources', async () => {
@@ -148,13 +162,73 @@ function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo }) {
 
   // --- API Keys ---
 
-  ipcMain.handle('admin:listApiKeys', async (_event, _params) => {
+  ipcMain.handle('admin:createApiKey', async (_event, payload) => {
     try {
+      const session = authContext?.getSession?.();
+      if (!session?.userId) {
+        return { error: '请先登录' };
+      }
+
+      const { name, maxCount, sourceIds } = payload || {};
+      if (!name) {
+        return { error: 'Key 名称不能为空' };
+      }
+
+      // Resolve level permission ceiling
+      const userLevel = session.level ?? 0;
+      const levelPerm = LEVEL_PERMISSIONS[userLevel] || LEVEL_PERMISSIONS[0];
+      const ceilingRate = levelPerm.rate_limit < 0 ? Infinity : levelPerm.rate_limit;
+      const ceilingCount = levelPerm.max_count < 0 ? Infinity : levelPerm.max_count;
+
+      const effectiveRateLimit = Math.min(100, ceilingRate);
+      const effectiveMaxCount = Math.min(maxCount || 10, ceilingCount);
+
+      // Generate a random API key: knews_<random>
+      const rawKey = `knews_${crypto.randomBytes(24).toString('hex')}`;
+      const keyHash = hashApiKey(rawKey);
+
+      const row = {
+        id: crypto.randomUUID(),
+        user_id: session.userId,
+        key_hash: keyHash,
+        name,
+        is_active: true,
+        source_scope: JSON.stringify(sourceIds || []),
+        rate_limit: effectiveRateLimit,
+        max_count: effectiveMaxCount,
+        call_count: 0,
+      };
+
       const { data, error } = await apiKeyRepo.supabase
+        .from('api_key')
+        .insert(row)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Return the raw key to the frontend (only shown once)
+      return { ok: true, key: rawKey, data };
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('admin:listApiKeys', async (_event, params) => {
+    try {
+      const session = authContext?.getSession?.();
+
+      let query = apiKeyRepo.supabase
         .from('api_key')
         .select('*, users(nickname)')
         .order('created_at', { ascending: false });
 
+      // Default: filter by current session user; pass { all: true } for admin page
+      if (!params?.all && session?.userId) {
+        query = query.eq('user_id', session.userId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
 
       return {
@@ -165,8 +239,12 @@ function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo }) {
           key: k.id,
           rateLimitRph: k.rate_limit || 100,
           callCount: k.call_count || 0,
+          call_count: k.call_count || 0,
           lastCallTime: k.last_used || null,
+          last_used: k.last_used || null,
           active: k.is_active,
+          source_ids: typeof k.source_scope === 'string' ? JSON.parse(k.source_scope) : (Array.isArray(k.source_scope) ? k.source_scope : []),
+          max_count: k.max_count || 10,
         })),
       };
     } catch (err) {

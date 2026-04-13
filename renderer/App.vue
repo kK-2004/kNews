@@ -35,6 +35,7 @@
         </button>
         <button v-if="isHomeRoute && canRefresh" class="refresh-btn" type="button" @click="onRefresh">一键刷新</button>
         <button v-else-if="isHomeRoute && isLoggedIn" class="refresh-btn" type="button" @click="showUpgradeHint">一键刷新</button>
+        <button v-else-if="isHomeRoute" class="refresh-btn" type="button" @click="showLoginHint">一键刷新</button>
       </nav>
       <div
         ref="userMenuRef"
@@ -60,11 +61,12 @@
         >
           <template v-if="isLoggedIn">
             <p class="user-name">{{ userStore.profile?.name || 'GitHub User' }}</p>
+            <RouterLink class="menu-link" to="/subscribe" @click="userMenuOpen = false">
+              订阅方案
+              <span class="plan-tag">{{ currentPlanLabel }}</span>
+            </RouterLink>
             <RouterLink class="menu-link" to="/settings" @click="userMenuOpen = false">设置</RouterLink>
             <button class="menu-link danger" type="button" @click="logout">退出</button>
-          </template>
-          <template v-else>
-            <p class="menu-hint">Login not available</p>
           </template>
         </div>
       </div>
@@ -136,12 +138,32 @@ const loginModalVisible = ref(false)
 const githubDialogVisible = ref(false)
 const onRefresh = () => window.dispatchEvent(new CustomEvent('knews:refresh-feed'))
 const { commands, query } = useCommands({ onRefresh })
-const { toasts, dismiss, success, warning, error } = useToast()
+const { toasts, dismiss, success, warning } = useToast()
 const authApi = useAuthApi()
 const uiStore = useUiStore()
 const userStore = useUserStore()
 const canRefresh = computed(() => isLoggedIn.value && (userStore.profile?.level ?? 0) >= 1)
-const showUpgradeHint = () => warning('升级订阅后可使用一键刷新功能')
+const showUpgradeHint = () => {
+  router.push('/subscribe')
+  warning('您当前帐户的 ' + getLevelName(userStore.profile.level) + ' 订阅无法使用该功能～正在前往升级～')
+}
+const getLevelName = (level) => {
+  switch (level){
+    case 0:
+      return '基础版（Free）'
+    case 1:
+      return '高级版（Plus）'
+    case 2:
+      return '专业版（Pro）'
+  }
+}
+const showLoginHint = () => warning('登录后才能使用一键刷新哦～')
+const currentPlanLabel = computed(() => {
+  const level = userStore.profile?.level ?? 0
+  if (level >= 2) return 'Pro'
+  if (level >= 1) return 'Plus'
+  return 'Free'
+})
 const route = useRoute()
 const router = useRouter()
 const media = typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)') : null
@@ -643,6 +665,16 @@ onUnmounted(() => {
 
 .menu-link.danger {
   color: #d14343;
+}
+
+.plan-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: color-mix(in srgb, #0060a9 12%, transparent);
+  color: #0060a9;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  margin-left: 0.35rem;
 }
 
 .menu-hint {

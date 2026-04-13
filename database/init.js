@@ -3,7 +3,7 @@ const path = require('path');
 
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 
-const EXPECTED_TABLES = ['users', 'api_key', 'source', 'preference', 'settings'];
+const EXPECTED_TABLES = ['users', 'api_key', 'source', 'preference', 'settings', 'subscriptions'];
 
 /**
  * Read all SQL migration files from the migrations/ directory in order.

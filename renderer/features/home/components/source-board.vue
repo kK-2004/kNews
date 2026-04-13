@@ -50,7 +50,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 
 const props = defineProps({
   source: {
@@ -97,14 +97,17 @@ const onIconError = (event) => {
   event.target.src = './icons/default.png'
 }
 
+const timeNow = inject('timeNow', null)
+
 const updatedLabel = computed(() => {
   if (props.status === 'error') return '获取失败'
   const ts = Number(props.updatedTime || 0)
   if (!ts) return '加载中...'
-  const diff = Date.now() - ts
+  const now = timeNow?.value ?? Date.now()
+  const diff = now - ts
+  if (diff >= 10 * 60 * 1000) return '10分钟前更新'
   if (diff < 60 * 1000) return '刚刚更新'
-  if (diff < 60 * 60 * 1000) return `${Math.floor(diff / 60000)}分钟前更新`
-  return `${Math.floor(diff / 3600000)}小时前更新`
+  return `${Math.floor(diff / 60000)}分钟前更新`
 })
 
 const showHeat = (value) => typeof value === 'string' && value.includes('万')

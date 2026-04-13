@@ -17,6 +17,7 @@ const { register: registerUserHandlers } = require('./ipc/user.handler');
 const { register: registerAdminHandlers } = require('./ipc/admin.handler');
 const { register: registerUserActionHandlers } = require('./ipc/user-actions.handler');
 const { register: registerMcpHandlers } = require('./ipc/mcp.handler');
+const { register: registerSubscriptionHandlers } = require('./ipc/subscription.handler');
 
 let mainWindow = null;
 let instances = null;
@@ -176,12 +177,18 @@ function registerIpcHandlers(ipcMain, deps) {
     sourceRepo: deps.sourceRepo,
     userRepo: deps.userRepo,
     apiKeyRepo: deps.apiKeyRepo,
+    authContext: deps.authContext,
   });
 
   registerUserActionHandlers(ipcMain, {});
 
   registerMcpHandlers(ipcMain, {
     mcpServer: deps.mcpServer,
+  });
+
+  registerSubscriptionHandlers(ipcMain, {
+    subscriptionService: deps.subscriptionService,
+    authContext: deps.authContext,
   });
 }
 

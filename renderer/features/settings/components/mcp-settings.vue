@@ -225,19 +225,27 @@ const createKey = async () => {
     return
   }
 
-  const payload = {
-    name: newKeyName.value.trim(),
-    maxCount: clampMaxCount(maxCount.value),
-    sourceIds: selectedSourceIds.value
-  }
-  const created = await authApi.createApiKey(payload)
-  if (created?.key) {
-    createdApiKey.value = created.key
-    showKeyModal.value = true
-    newKeyName.value = ''
-    maxCount.value = 5
-    selectedSourceIds.value = []
-    await load()
+  try {
+    const payload = {
+      name: newKeyName.value.trim(),
+      maxCount: clampMaxCount(maxCount.value),
+      sourceIds: [...selectedSourceIds.value]
+    }
+    const created = await authApi.createApiKey(payload)
+    if (created?.error) {
+      error(created.error)
+      return
+    }
+    if (created?.key) {
+      createdApiKey.value = created.key
+      showKeyModal.value = true
+      newKeyName.value = ''
+      maxCount.value = 5
+      selectedSourceIds.value = []
+      await load()
+    }
+  } catch (err) {
+    error(err?.message || '创建失败')
   }
 }
 

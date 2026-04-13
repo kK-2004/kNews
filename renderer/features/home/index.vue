@@ -98,7 +98,7 @@
 </template>
 
 <script setup>
-import { computed, inject, nextTick, onMounted, onServerPrefetch, onUnmounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, onServerPrefetch, onUnmounted, provide, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useDebounceFn } from '@vueuse/core'
 import BaseSkeleton from '@/shared/components/base-skeleton.vue'
@@ -126,6 +126,11 @@ const homeBoardStore = useHomeBoardStore()
 const { boards, allSelectedSources, loading, error, lastBuiltTab } = storeToRefs(homeBoardStore)
 const ssrOrigin = inject('ssrOrigin', '')
 const route = useRoute()
+
+// Shared time source for source-board relative time labels
+const timeNow = ref(Date.now())
+let timeTicker = null
+provide('timeNow', timeNow)
 const activeTab = computed(() => {
   const tab = String(route.query.tab || 'hottest')
   return ['china', 'focus', 'hottest', 'realtime'].includes(tab) ? tab : 'hottest'
@@ -696,6 +701,7 @@ watch(() => userStore.authToken, async (newToken) => {
 
 onMounted(() => {
   window.addEventListener('knews:refresh-feed', onGlobalRefresh)
+  timeTicker = setInterval(() => { timeNow.value = Date.now() }, 60_000)
   loadPreferences().then(async () => {
     const hasHydratedBoards = boards.value.length > 0 && lastBuiltTab.value === activeTab.value
     const hasLocalOverrides = orderedSourceIds.value.length > 0
@@ -709,6 +715,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('knews:refresh-feed', onGlobalRefresh)
+  if (timeTicker) { clearInterval(timeTicker); timeTicker = null }
 })
 
 onServerPrefetch(async () => {

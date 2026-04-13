@@ -35,6 +35,12 @@ export const routes = [
     meta: { title: 'Reader' }
   },
   {
+    path: '/subscribe',
+    name: 'subscribe',
+    component: () => import('@/features/subscribe/subscribe-page.vue'),
+    meta: { title: '订阅方案' }
+  },
+  {
     path: '/settings',
     name: 'settings',
     component: () => import('@/features/settings/index.vue'),

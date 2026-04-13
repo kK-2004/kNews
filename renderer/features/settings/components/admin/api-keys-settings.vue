@@ -270,7 +270,7 @@ const getRangeTs = () => {
 }
 
 const loadApiKeys = async () => {
-  const res = await adminApi.listApiKeys({ keyId: selectedKey.value })
+  const res = await adminApi.listApiKeys({ all: true, keyId: selectedKey.value })
   apikeys.value = Array.isArray(res?.keys) ? res.keys : []
 }
 

@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld("api", {
 
   admin: {
     listDatasources: () => ipcRenderer.invoke("admin:listDatasources"),
+    createApiKey: (payload) => ipcRenderer.invoke("admin:createApiKey", payload),
     createDatasource: (payload) => ipcRenderer.invoke("admin:createDatasource", payload),
     updateDatasource: (id, payload) => ipcRenderer.invoke("admin:updateDatasource", id, payload),
     deleteDatasource: (id) => ipcRenderer.invoke("admin:deleteDatasource", id),
@@ -76,5 +77,10 @@ contextBridge.exposeInMainWorld("api", {
 
   mcp: {
     getHealth: () => ipcRenderer.invoke("mcp:getHealth"),
+  },
+
+  subscription: {
+    getCurrent: () => ipcRenderer.invoke("subscription:getCurrent"),
+    create: (plan) => ipcRenderer.invoke("subscription:create", { plan }),
   },
 });
