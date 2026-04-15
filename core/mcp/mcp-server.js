@@ -6,7 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const tools = require('./mcp-tools');
+const { WebStandardStreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js');
+const { createMcpSdkServer } = require('./mcp-tools');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -131,12 +132,6 @@ class McpServer {
     this.startedAt = null;
 
     this.rateLimiter = new RateLimiter();
-
-    // Build a name -> tool lookup for fast dispatch
-    this.toolMap = new Map();
-    for (const tool of tools) {
-      this.toolMap.set(tool.name, tool);
-    }
   }
 
   // -----------------------------------------------------------------------
@@ -241,9 +236,15 @@ class McpServer {
     if (!match) return null;
 
     const apiKey = match[1].trim();
-    const keyHash = hashApiKey(apiKey);
 
     try {
+      // Default keys may already be passed around as the stored hash value.
+      const defaultRow = await this.apiKeyRepository.findByHash(apiKey, {
+        isDefault: true,
+      });
+      if (defaultRow) return defaultRow;
+
+      const keyHash = hashApiKey(apiKey);
       const row = await this.apiKeyRepository.findByHash(keyHash);
       return row || null;
     } catch (err) {
@@ -264,14 +265,10 @@ class McpServer {
       return this._handleHealth(res);
     }
 
-    // --- POST routes below require auth ----------------------------------
-    if (req.method === 'POST' && url.pathname === '/mcp/tools/list') {
-      return this._withAuth(req, res, () => this._handleToolsList(res));
-    }
-
-    if (req.method === 'POST' && url.pathname === '/mcp/tools/call') {
+    // --- Standard MCP endpoint -------------------------------------------
+    if (url.pathname === '/mcp') {
       return this._withAuth(req, res, (apiKeyRow) =>
-        this._handleToolsCall(req, res, apiKeyRow),
+        this._handleMcpRequest(req, res, apiKeyRow),
       );
     }
 
@@ -325,49 +322,31 @@ class McpServer {
     jsonResponse(res, 200, { status: 'ok', uptime, port: this.port });
   }
 
-  _handleToolsList(res) {
-    const definitions = tools.map((t) => ({
-      name: t.name,
-      description: t.description,
-    }));
-    jsonResponse(res, 200, { result: definitions });
-  }
-
-  async _handleToolsCall(req, res, _apiKeyRow) {
-    // Parse JSON body
-    const body = await this._readBody(req);
-    if (!body) {
-      return jsonResponse(res, 400, { error: 'Request body required' });
-    }
-
-    let parsed;
-    try {
-      parsed = JSON.parse(body);
-    } catch (_e) {
-      return jsonResponse(res, 400, { error: 'Invalid JSON' });
-    }
-
-    const toolName = parsed.tool;
-    const args = parsed.args || {};
-
-    const tool = this.toolMap.get(toolName);
-    if (!tool) {
-      return jsonResponse(res, 404, {
-        error: `Unknown tool: ${toolName}`,
-      });
-    }
+  async _handleMcpRequest(req, res, apiKeyRow) {
+    const server = createMcpSdkServer({
+      sourceService: this.sourceService,
+      feedService: this.feedService,
+      apiKey: apiKeyRow,
+    });
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: false,
+    });
 
     try {
-      const result = await tool.handler(args, {
-        sourceService: this.sourceService,
-        feedService: this.feedService,
-      });
-      jsonResponse(res, 200, { result });
+      const request = await this._toWebRequest(req);
+      transport.onerror = (err) =>
+        console.error('[McpServer] MCP transport error:', err);
+      await server.connect(transport);
+      const response = await transport.handleRequest(request);
+      return this._sendWebResponse(res, response);
     } catch (err) {
-      console.error(`[McpServer] Tool "${toolName}" error:`, err);
+      console.error('[McpServer] MCP request error:', err);
       jsonResponse(res, 500, {
-        error: `Tool execution failed: ${err.message}`,
+        error: `Internal server error: ${err.message}`,
       });
+    } finally {
+      await server.close().catch(() => {});
     }
   }
 
@@ -388,6 +367,39 @@ class McpServer {
         resolve(null);
       });
     });
+  }
+
+  async _toWebRequest(req) {
+    const headers = {};
+    for (const [key, value] of Object.entries(req.headers || {})) {
+      if (Array.isArray(value)) {
+        headers[key] = value.join(', ');
+      } else if (typeof value === 'string') {
+        headers[key] = value;
+      }
+    }
+
+    const accept = headers.accept || '';
+    if (!accept.includes('application/json') || !accept.includes('text/event-stream')) {
+      headers.accept = 'application/json, text/event-stream';
+    }
+
+    const body =
+      req.method === 'GET' || req.method === 'HEAD'
+        ? undefined
+        : await this._readBody(req);
+
+    return new Request(`http://localhost:${this.port}${req.url}`, {
+      method: req.method,
+      headers,
+      body: body || undefined,
+    });
+  }
+
+  async _sendWebResponse(res, response) {
+    res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
+    const body = response.body ? Buffer.from(await response.arrayBuffer()) : null;
+    res.end(body || undefined);
   }
 }
 

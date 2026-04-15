@@ -18,6 +18,7 @@ const { register: registerAdminHandlers } = require('./ipc/admin.handler');
 const { register: registerUserActionHandlers } = require('./ipc/user-actions.handler');
 const { register: registerMcpHandlers } = require('./ipc/mcp.handler');
 const { register: registerSubscriptionHandlers } = require('./ipc/subscription.handler');
+const { register: registerChatHandlers } = require('./ipc/chat.handler');
 
 let mainWindow = null;
 let instances = null;
@@ -189,6 +190,10 @@ function registerIpcHandlers(ipcMain, deps) {
   registerSubscriptionHandlers(ipcMain, {
     subscriptionService: deps.subscriptionService,
     authContext: deps.authContext,
+  });
+
+  registerChatHandlers(ipcMain, {
+    chatService: deps.chatService,
   });
 }
 

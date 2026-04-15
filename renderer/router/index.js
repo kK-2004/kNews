@@ -41,6 +41,12 @@ export const routes = [
     meta: { title: '订阅方案' }
   },
   {
+    path: '/assistant',
+    name: 'assistant',
+    component: () => import('@/features/assistant/index.vue'),
+    meta: { title: 'K-Ai 对话' }
+  },
+  {
     path: '/settings',
     name: 'settings',
     component: () => import('@/features/settings/index.vue'),

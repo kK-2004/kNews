@@ -1,9 +1,25 @@
+'use strict';
+
+const crypto = require('node:crypto');
+
+const HASH_SALT = 'knews_api_key_salt';
+
+const DEFAULT_SOURCE_SCOPE = ['douyin', 'weibo', 'github', 'toutiao'];
+
+const LEVEL_PERMISSIONS = {
+  0: { rate_limit: 3, max_count: 5 },
+  1: { rate_limit: 20, max_count: 10 },
+  2: { rate_limit: -1, max_count: 50 },
+};
+
 class UserService {
   /**
    * @param {import('./user-repository')} userRepository
+   * @param {import('../auth/api-key-repository')} [apiKeyRepo]
    */
-  constructor(userRepository) {
+  constructor(userRepository, apiKeyRepo) {
     this.userRepository = userRepository;
+    this.apiKeyRepo = apiKeyRepo;
   }
 
   /**
@@ -48,7 +64,43 @@ class UserService {
     }
 
     // No existing user found — create a new one
-    return await this.userRepository.create({ github_id, email, nickname });
+    user = await this.userRepository.create({ github_id, email, nickname });
+
+    // Auto-create a default MCP API Key for the new user
+    await this._createDefaultApiKey(user);
+
+    return user;
+  }
+
+  /**
+   * Create a default MCP API Key for a new user.
+   * @param {{ id: number, level?: number }} user
+   */
+  async _createDefaultApiKey(user) {
+    if (!this.apiKeyRepo) return;
+
+    try {
+      const level = user.level ?? 0;
+      const perm = LEVEL_PERMISSIONS[level] || LEVEL_PERMISSIONS[0];
+      const rawKey = `knews_${crypto.randomBytes(24).toString('hex')}`;
+      const keyHash = crypto.createHash('sha256').update(String(rawKey) + HASH_SALT).digest('hex');
+      const displayName = user.nickname?.trim() || `用户${user.id}`;
+
+      await this.apiKeyRepo.supabase.from('api_key').insert({
+        id: crypto.randomUUID(),
+        user_id: user.id,
+        key_hash: keyHash,
+        name: `${displayName} 默认Key`,
+        is_active: true,
+        is_default: true,
+        source_scope: JSON.stringify(DEFAULT_SOURCE_SCOPE),
+        rate_limit: perm.rate_limit,
+        max_count: perm.max_count,
+        call_count: 0,
+      });
+    } catch (err) {
+      console.error('[UserService] Failed to create default API key:', err.message);
+    }
   }
 }
 

@@ -1,118 +1,158 @@
 <template>
   <section class="mcp-settings">
     <header class="hero">
-      <h3>MCP API Keys</h3>
-      <p>为不同客户端创建独立 API Key，并精细控制可检索板块与返回条数。</p>
+      <div>
+        <h3>MCP API Keys</h3>
+        <p>为不同客户端创建独立 API Key，并精细控制可检索板块与返回条数。</p>
+      </div>
+      <base-button v-if="isLoggedIn" @click="openCreateModal">
+        <span class="i-tabler-plus" style="font-size:1rem"></span>
+        创建 Key
+      </base-button>
     </header>
 
-    <div class="panel account">
-      <template v-if="!loginEnabled">
-        <p class="hint">登录未配置，无法管理 API Key。</p>
-      </template>
-      <template v-else-if="!isLoggedIn">
-        <p class="hint">请先登录后再创建或管理 API Key。</p>
-      </template>
-      <template v-else>
-        <div class="account-row">
-          <div>
-            <p class="label">当前账号</p>
-            <p class="value">{{ userStore.profile?.name || userStore.loginType || 'GitHub User' }}</p>
-          </div>
-          <base-button variant="secondary" @click="logout">退出登录</base-button>
-        </div>
-      </template>
+    <div v-if="loading" class="loading-hint">
+      <span class="loading-spinner" />
+      <span>加载中…</span>
+    </div>
+    <div v-else-if="!loginEnabled || !isLoggedIn" class="panel account">
+      <p v-if="!loginEnabled" class="hint">登录未配置，无法管理 API Key。</p>
+      <p v-else class="hint">请先登录后再创建或管理 API Key。</p>
     </div>
 
-    <template v-if="isLoggedIn">
-      <div class="panel create">
-        <h4>创建 Key</h4>
-        <div class="form-grid">
-          <base-input v-model="newKeyName" label="Key 名称" placeholder="例如：Cursor / Claude / MCP Server" required />
-          <label class="count-field">
-            <span>单次返回条数</span>
-            <input v-model.number="maxCount" type="number" min="1" max="30" @blur="onMaxCountBlur">
-          </label>
+    <template v-else-if="isLoggedIn">
+      <div class="panel list">
+        <div class="list-header">
+          <h4>Key 列表</h4>
+          <span v-if="keys.length" class="count-badge">{{ keys.length }}</span>
         </div>
+        <div v-if="loading" class="loading-hint">
+          <span class="loading-spinner" />
+          <span>加载中…</span>
+        </div>
+        <div v-else-if="keys.length" class="key-list">
+          <article v-for="key in keys" :key="key.id" class="key-item">
+            <div class="key-main">
+              <div class="key-top-row">
+                <p class="name">{{ key.name || 'Untitled key' }}</p>
+                <span v-if="key.is_default" class="badge-default">内置 Key</span>
+                <div class="key-chips">
+                  <template v-if="(key.source_ids || []).length">
+                    <span v-for="sid in key.source_ids" :key="sid" class="source-tag">
+                      {{ sourceNameMap[sid] || sid }}
+                    </span>
+                  </template>
+                  <span v-else class="source-tag all">全部板块</span>
+                </div>
+              </div>
+              <p class="meta">
+                <span>上限 {{ key.max_count || 12 }} 条</span>
+                <span class="sep">·</span>
+                <span>调用 {{ key.call_count || 0 }} 次</span>
+                <span class="sep">·</span>
+                <span>{{ formatLastUsed(key.last_used) }}</span>
+              </p>
+            </div>
+            <div v-if="key.is_default" class="key-actions">
+              <button class="action-btn" type="button" @click="editDefaultSources(key)">
+                <span class="i-tabler-edit"></span>
+              </button>
+            </div>
+            <button v-else class="delete-btn" type="button" @click="removeKey(key.id)" title="删除">
+              <span class="i-tabler-trash"></span>
+            </button>
+          </article>
+        </div>
+        <p v-else class="hint">暂无 API Key，点击上方按钮创建。</p>
+      </div>
+    </template>
 
-        <div class="source-head">
-          <p>可检索新闻板块</p>
-          <div class="source-actions">
-            <button type="button" @click="selectAllSources">全选</button>
-            <button type="button" @click="clearSources">清空</button>
+    <!-- 创建 Key Modal -->
+    <base-modal :open="showCreateModal" @close="showCreateModal = false">
+      <template #title>
+        <h3 class="modal-title">创建 API Key</h3>
+      </template>
+      <div class="create-form">
+        <base-input v-model="newKeyName" label="Key 名称" placeholder="例如：Cursor / Claude / MCP Server" />
+        <label class="count-field">
+          <span>单次返回条数</span>
+          <input v-model.number="maxCount" type="number" min="1" max="30" @blur="onMaxCountBlur">
+        </label>
+
+        <div class="source-section">
+          <div class="source-head">
+            <p>可检索新闻板块</p>
+            <div class="source-actions">
+              <button type="button" @click="selectAllSources">全选</button>
+              <button type="button" @click="clearSources">清空</button>
+            </div>
+          </div>
+          <div class="source-grid">
+            <label
+              v-for="source in enabledSources"
+              :key="source.id"
+              class="source-chip"
+              :class="{ active: selectedSourceIds.includes(source.id) }"
+            >
+              <input
+                :checked="selectedSourceIds.includes(source.id)"
+                type="checkbox"
+                @change="toggleSource(source.id)"
+              >
+              <span>{{ source.name }}</span>
+            </label>
           </div>
         </div>
+
+        <base-button class="generate-btn" @click="createKey">生成 API Key</base-button>
+      </div>
+    </base-modal>
+
+    <!-- API Key 创建成功 Modal -->
+    <base-modal :open="showKeyModal" @close="showKeyModal = false">
+      <template #title>
+        <h3 class="modal-title">API Key 创建成功</h3>
+      </template>
+      <div class="key-modal-content">
+        <p class="key-description">您的 API Key 已创建。请妥善保管您的密钥。</p>
+        <div class="api-key-box">
+          <code class="api-key-text">{{ createdApiKey }}</code>
+          <base-button class="copy-button" @click="copyApiKey">
+            <span class="i-tabler-copy"></span>
+            复制
+          </base-button>
+        </div>
+      </div>
+    </base-modal>
+
+    <!-- 编辑内置 Key 数据源 Modal -->
+    <base-modal :open="showEditSourcesModal" @close="showEditSourcesModal = false">
+      <template #title>
+        <h3 class="modal-title">编辑内置 Key 数据源</h3>
+      </template>
+      <div class="key-modal-content">
+        <p class="key-description">选择内置 Key 可检索的新闻板块：</p>
         <div class="source-grid">
           <label
             v-for="source in enabledSources"
             :key="source.id"
             class="source-chip"
-            :class="{ active: selectedSourceIds.includes(source.id) }"
+            :class="{ active: editingSourceIds.includes(source.id) }"
           >
             <input
-              :checked="selectedSourceIds.includes(source.id)"
+              :checked="editingSourceIds.includes(source.id)"
               type="checkbox"
-              @change="toggleSource(source.id)"
+              @change="toggleEditSource(source.id)"
             >
             <span>{{ source.name }}</span>
           </label>
         </div>
-
-        <base-button @click="createKey">生成 API Key</base-button>
-
-        <base-modal :open="showKeyModal" @close="showKeyModal = false">
-          <template #title>
-            <h3 class="modal-title">API Key 创建成功</h3>
-          </template>
-          <div class="key-modal-content">
-            <p class="key-description">您的 API Key 已创建。请妥善保管您的密钥。</p>
-
-            <div class="api-key-box">
-              <code class="api-key-text">{{ createdApiKey }}</code>
-              <base-button class="copy-button" @click="copyApiKey">
-                <span class="i-tabler-copy"></span>
-                复制
-              </base-button>
-            </div>
-          </div>
-        </base-modal>
-      </div>
-
-      <div class="panel list">
-        <h4>Key 列表</h4>
-        <div v-if="keys.length" class="key-list">
-          <article v-for="key in keys" :key="key.id" class="key-item">
-            <div class="main">
-              <p class="name">{{ key.name || 'Untitled key' }}</p>
-              <p class="meta key-row">
-                <span class="key-label">API Key：</span>
-                <button
-                  class="key-pill"
-                  type="button"
-                  :title="`点击复制 ${key.name || 'API Key'}`"
-                  @click="copyKey(key.key_plaintext || key.id)"
-                >
-                  <code class="key-value">{{ key.key_plaintext || key.id }}</code>
-                  <span class="key-copy">
-                    <span class="i-tabler-copy"></span>
-                    复制
-                  </span>
-                </button>
-              </p>
-              <p class="meta">
-                可检索：
-                <template v-if="(key.source_ids || []).length">{{ mapSourceNames(key.source_ids).join('、') }}</template>
-                <template v-else>全部板块</template>
-              </p>
-              <p class="meta">
-                返回条数上限：{{ key.max_count || 12 }} ｜ 调用次数：{{ key.call_count || 0 }} ｜ 最后调用：{{ formatLastUsed(key.last_used) }}
-              </p>
-            </div>
-            <base-button size="sm" variant="secondary" @click="removeKey(key.id)">删除</base-button>
-          </article>
+        <div class="edit-sources-actions">
+          <base-button variant="secondary" @click="showEditSourcesModal = false">取消</base-button>
+          <base-button @click="saveDefaultSources">保存</base-button>
         </div>
-        <p v-else class="hint">暂无 API Key。</p>
       </div>
-    </template>
+    </base-modal>
   </section>
 </template>
 
@@ -138,52 +178,93 @@ const { success, error } = useToast()
 const loginEnabled = ref(false)
 const keys = ref([])
 const enabledSources = ref([])
-const newKeyName = ref('')
+const showCreateModal = ref(false)
 const showKeyModal = ref(false)
 const createdApiKey = ref('')
+const loading = ref(true)
+
+// 创建 Key 表单状态
+const newKeyName = ref('')
 const maxCount = ref(5)
 const selectedSourceIds = ref([])
-const isLoggedIn = computed(() => Boolean(userStore.authToken || userStore.profile))
 
-const sourceNameMap = computed(() => Object.fromEntries(enabledSources.value.map((source) => [source.id, source.name])))
+// 编辑内置 Key
+const showEditSourcesModal = ref(false)
+const editingKeyId = ref(null)
+const editingSourceIds = ref([])
+
+const isLoggedIn = computed(() => Boolean(userStore.authToken || userStore.profile))
+const sourceNameMap = computed(() => Object.fromEntries(enabledSources.value.map((s) => [s.id, s.name])))
 
 const clampMaxCount = (value) => Math.min(30, Math.max(1, Number(value) || 5))
 const onMaxCountBlur = () => {
   maxCount.value = clampMaxCount(maxCount.value)
 }
 
-const load = async () => {
-  const status = await authApi.getLoginStatus()
-  loginEnabled.value = Boolean(status?.enable)
-
-  const allSources = await sourcesApi.fetchSources()
-  enabledSources.value = allSources || []
-
-  if (!isLoggedIn.value) return
-  const profile = await authApi.getProfile()
-  if (profile?.user) {
-    userStore.setAuth({
-      token: userStore.authToken,
-      type: userStore.loginType || 'github',
-      profile: {
-        ...(userStore.profile || {}),
-        name: userStore.profile?.name || profile.nickname || profile.login || '',
-        login: profile.nickname || userStore.profile?.login || '',
-        userId: profile.id || userStore.profile?.userId,
-        level: profile.level ?? userStore.profile?.level ?? 0,
-      }
-    })
-  }
-  const res = await authApi.listApiKeys()
-  keys.value = (res?.keys || []).map((item) => ({
-    ...item,
-    source_ids: Array.isArray(item?.source_ids) ? item.source_ids : [],
-    max_count: clampMaxCount(item?.max_count)
-  }))
+const openCreateModal = () => {
+  newKeyName.value = ''
+  maxCount.value = 5
+  selectedSourceIds.value = enabledSources.value.map((s) => s.id)
+  showCreateModal.value = true
 }
 
-const loginWithGithub = () => {
-  window.location.href = '/api/login'
+const load = async () => {
+  loading.value = true
+  try {
+    const status = await authApi.getLoginStatus()
+    loginEnabled.value = Boolean(status?.enable)
+
+    const allSources = await sourcesApi.fetchSources()
+    enabledSources.value = allSources || []
+
+    // Sync from main process session (persisted in session.enc, restored on boot)
+    const session = await window.api.auth.getSession().catch(() => null)
+    if (session?.userId) {
+      userStore.setAuth({
+        token: userStore.authToken || '',
+        type: session.provider || userStore.loginType || 'github',
+        profile: {
+          ...(userStore.profile || {}),
+          name: session.nickname || userStore.profile?.name || '',
+          login: session.nickname || userStore.profile?.login || '',
+          userId: session.userId,
+          level: session.level ?? userStore.profile?.level ?? 0,
+        }
+      })
+    } else {
+      userStore.clearAuth()
+    }
+
+    // Enrich with DB profile for latest avatar/level
+    const profile = await authApi.getProfile().catch(() => null)
+    if (profile?.id || profile?.nickname) {
+      userStore.setAuth({
+        token: userStore.authToken || '',
+        type: userStore.loginType || 'github',
+        profile: {
+          ...(userStore.profile || {}),
+          name: profile.nickname || userStore.profile?.name || '',
+          login: profile.nickname || userStore.profile?.login || '',
+          userId: profile.id || userStore.profile?.userId,
+          level: profile.level ?? userStore.profile?.level ?? 0,
+        }
+      })
+    }
+
+    if (!isLoggedIn.value) {
+      keys.value = []
+      return
+    }
+
+    const res = await authApi.listApiKeys()
+    keys.value = (res?.keys || []).map((item) => ({
+      ...item,
+      source_ids: Array.isArray(item?.source_ids) ? item.source_ids : [],
+      max_count: clampMaxCount(item?.max_count)
+    }))
+  } finally {
+    loading.value = false
+  }
 }
 
 const logout = () => {
@@ -202,20 +283,16 @@ const toggleSource = (id) => {
 }
 
 const selectAllSources = () => {
-  selectedSourceIds.value = enabledSources.value.map((source) => source.id)
+  selectedSourceIds.value = enabledSources.value.map((s) => s.id)
 }
 
 const clearSources = () => {
   selectedSourceIds.value = []
 }
 
-const mapSourceNames = (sourceIds = []) => sourceIds
-  .map((id) => sourceNameMap.value[id] || id)
-  .filter(Boolean)
-
 const formatLastUsed = (value) => {
   const ts = Number(value || 0)
-  if (!ts) return '从未'
+  if (!ts) return '从未调用'
   return new Date(ts).toLocaleString()
 }
 
@@ -238,10 +315,8 @@ const createKey = async () => {
     }
     if (created?.key) {
       createdApiKey.value = created.key
+      showCreateModal.value = false
       showKeyModal.value = true
-      newKeyName.value = ''
-      maxCount.value = 5
-      selectedSourceIds.value = []
       await load()
     }
   } catch (err) {
@@ -286,6 +361,33 @@ const copyKey = async (apiKey) => {
   }
 }
 
+const editDefaultSources = (key) => {
+  editingKeyId.value = key.id
+  editingSourceIds.value = [...(key.source_ids || [])]
+  showEditSourcesModal.value = true
+}
+
+const toggleEditSource = (id) => {
+  if (editingSourceIds.value.includes(id)) {
+    editingSourceIds.value = editingSourceIds.value.filter((item) => item !== id)
+  } else {
+    editingSourceIds.value = [...editingSourceIds.value, id]
+  }
+}
+
+const saveDefaultSources = async () => {
+  try {
+    await authApi.updateApiKey(editingKeyId.value, {
+      source_scope: JSON.stringify(editingSourceIds.value)
+    })
+    showEditSourcesModal.value = false
+    success('数据源已更新')
+    await load()
+  } catch (err) {
+    error(err?.message || '更新失败')
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -293,6 +395,13 @@ onMounted(load)
 .mcp-settings {
   display: grid;
   gap: 1rem;
+}
+
+/* Hero */
+.hero {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
 }
 
 .hero h3 {
@@ -306,6 +415,7 @@ onMounted(load)
   margin: 0.35rem 0 0;
 }
 
+/* Panel */
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -323,6 +433,12 @@ onMounted(load)
   color: var(--text);
 }
 
+.hint {
+  color: var(--muted);
+  margin: 0;
+}
+
+/* Account */
 .account-row {
   align-items: center;
   display: flex;
@@ -342,15 +458,194 @@ onMounted(load)
   color: var(--text);
 }
 
-.hint {
-  color: var(--muted);
-  margin: 0;
+/* Key list */
+.list-header {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
 }
 
-.form-grid {
+.count-badge {
+  background: color-mix(in srgb, #0b63ff 12%, transparent);
+  color: #0b63ff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+}
+
+.key-list {
   display: grid;
-  gap: 0.8rem;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.key-item {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  background: var(--surface);
+  transition: border-color 0.16s ease;
+}
+
+.key-item:hover {
+  border-color: color-mix(in srgb, var(--muted) 40%, var(--border));
+}
+
+.key-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.key-top-row {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text);
+}
+
+.badge-default {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, #0b63ff 12%, transparent);
+  color: #0b63ff;
+}
+
+.key-chips {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.source-tag {
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+  color: var(--muted);
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.source-tag.all {
+  background: color-mix(in srgb, #0b63ff 10%, transparent);
+  color: #0b63ff;
+}
+
+.key-pill {
+  align-items: center;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 0.4rem;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0;
+  transition: color 0.16s ease;
+}
+
+.key-pill:hover {
+  color: #0b63ff;
+}
+
+.key-pill:hover .key-copy {
+  color: #0b63ff;
+}
+
+.key-value {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  font-size: 0.8rem;
+  margin: 0;
+  max-width: 22rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.key-copy {
+  color: var(--muted);
+  font-size: 0.82rem;
+  display: inline-flex;
+  transition: color 0.16s ease;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin: 0;
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.sep {
+  opacity: 0.4;
+}
+
+.key-actions {
+  display: flex;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.action-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.16s ease;
+}
+
+.action-btn:hover {
+  background: color-mix(in srgb, #0b63ff 10%, transparent);
+  color: #0b63ff;
+}
+
+.delete-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.16s ease;
+  flex-shrink: 0;
+}
+
+.delete-btn:hover {
+  background: color-mix(in srgb, #e53e3e 10%, transparent);
+  color: #e53e3e;
+}
+
+/* Create Key Modal */
+.create-form {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
 }
 
 .count-field {
@@ -380,6 +675,11 @@ onMounted(load)
   border-color: #0b63ff;
 }
 
+.source-section {
+  display: grid;
+  gap: 0.6rem;
+}
+
 .source-head {
   align-items: center;
   display: flex;
@@ -387,7 +687,7 @@ onMounted(load)
 }
 
 .source-head p {
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   font-weight: 600;
   margin: 0;
   color: var(--text);
@@ -417,16 +717,15 @@ onMounted(load)
 
 .source-grid {
   display: grid;
-  gap: 0.45rem;
-  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
-  max-height: 12rem;
+  gap: 0.4rem;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  max-height: 10rem;
   overflow-y: auto;
-  padding-right: 0.5rem;
+  padding-right: 0.3rem;
 }
 
-/* 滚动条样式 */
 .source-grid::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 
 .source-grid::-webkit-scrollbar-track {
@@ -434,26 +733,23 @@ onMounted(load)
 }
 
 .source-grid::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted) 40%, transparent);
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
   border-radius: 3px;
-}
-
-.source-grid::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--muted) 60%, transparent);
 }
 
 .source-chip {
   align-items: center;
   border: 1px solid var(--border);
-  border-radius: 0.55rem;
+  border-radius: 0.5rem;
   cursor: pointer;
   display: inline-flex;
-  gap: 0.4rem;
-  min-height: 2rem;
-  padding: 0 0.55rem;
+  gap: 0.35rem;
+  min-height: 1.85rem;
+  padding: 0 0.5rem;
   background: var(--surface);
   color: var(--text);
   transition: all 0.16s ease;
+  font-size: 0.82rem;
 }
 
 .source-chip:hover {
@@ -461,7 +757,7 @@ onMounted(load)
 }
 
 .source-chip.active {
-  background: color-mix(in srgb, #0b63ff 15%, transparent);
+  background: color-mix(in srgb, #0b63ff 12%, transparent);
   border-color: #0b63ff;
   color: #0b63ff;
 }
@@ -470,99 +766,15 @@ onMounted(load)
   display: none;
 }
 
-.created-key {
-  margin: 0;
-  overflow-wrap: anywhere;
+.generate-btn {
+  margin-top: 0.25rem;
 }
 
-.key-list {
-  display: grid;
-  gap: 0.6rem;
-}
-
-.key-item {
-  align-items: center;
-  border: 1px solid var(--border);
-  border-radius: 0.7rem;
-  display: grid;
-  gap: 0.6rem;
-  grid-template-columns: 1fr auto;
-  padding: 0.7rem 0.8rem;
-  background: var(--surface);
-}
-
-.name {
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin: 0;
-  color: var(--text);
-}
-
-.meta {
-  color: var(--muted);
-  font-size: 0.8rem;
-  margin: 0.15rem 0 0;
-}
-
-.key-row {
-  align-items: center;
-  display: flex;
-  gap: 0.4rem;
-  min-width: 0;
-}
-
-.key-label {
-  transform: translateY(-1.5px);
-  color: var(--muted);
-  font-size: 0.8rem;
-  flex: 0 0 auto;
-}
-
-.key-pill {
-  align-items: center;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  color: inherit;
-  cursor: pointer;
-  display: inline-flex;
-  gap: 0.45rem;
-  max-width: 100%;
-  min-width: 0;
-  padding: 0;
-  transition: color 0.16s ease;
-}
-
-.key-pill:hover {
-  color: #0b63ff;
-}
-
-.key-value {
-  font-family: monospace;
-  font-size: 0.82rem;
-  margin: 0;
-  max-width: 20rem;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text);
-}
-
-.key-copy {
-  align-items: center;
-  color: var(--muted);
-  display: inline-flex;
-  font-size: 0.82rem;
-  gap: 0.2rem;
-  white-space: nowrap;
-}
-
+/* Key result & edit modals */
 .key-modal-content {
   display: grid;
   gap: 1.25rem;
   padding: 0.5rem;
-  max-width: 32rem;
 }
 
 .modal-title {
@@ -595,7 +807,7 @@ onMounted(load)
   border-radius: 0;
   color: var(--text);
   flex: 1;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
   font-size: 0.9rem;
   line-height: 1.5;
   overflow-x: auto;
@@ -626,10 +838,47 @@ onMounted(load)
   background: color-mix(in srgb, var(--muted) 15%, var(--surface));
 }
 
+.edit-sources-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
+/* Loading */
+.loading-hint {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  gap: 0.5rem;
+  padding: 1rem 0;
+}
+
+.loading-spinner {
+  animation: spin 0.8s linear infinite;
+  border: 2px solid var(--border);
+  border-top-color: #0b63ff;
+  border-radius: 50%;
+  height: 16px;
+  width: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Override modal width for create key */
+:deep(.modal) {
+  max-width: 40rem;
+}
+
 @media (max-width: 900px) {
-  .form-grid,
   .key-item {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .delete-btn,
+  .key-actions {
+    align-self: flex-end;
   }
 }
 </style>

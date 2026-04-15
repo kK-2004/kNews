@@ -26,7 +26,11 @@
       </div>
     </div>
 
-    <div v-if="users.length === 0" class="empty-state">
+    <div v-if="loading" class="empty-state">
+      <span class="loading-spinner" />
+      <p>加载中…</p>
+    </div>
+    <div v-else-if="users.length === 0" class="empty-state">
       <p>暂无用户数据</p>
     </div>
 
@@ -125,6 +129,7 @@ const adminApi = useAdminApi()
 const username = ref('')
 const status = ref('')
 const users = ref([])
+const loading = ref(true)
 const loginAudits = ref([])
 const drawerVisible = ref(false)
 const userKeys = ref([])
@@ -134,16 +139,21 @@ const totalPages = ref(1)
 const totalItems = ref(0)
 
 const load = async () => {
-  const res = await adminApi.listUsers({
-    username: username.value,
-    status: status.value,
-    page: currentPage.value,
-    pageSize: pageSize.value
-  })
-  users.value = Array.isArray(res?.users) ? res.users : []
-  loginAudits.value = Array.isArray(res?.loginAudits) ? res.loginAudits : []
-  totalPages.value = res?.pagination?.totalPages || 1
-  totalItems.value = res?.pagination?.total || 0
+  loading.value = true
+  try {
+    const res = await adminApi.listUsers({
+      username: username.value,
+      status: status.value,
+      page: currentPage.value,
+      pageSize: pageSize.value
+    })
+    users.value = Array.isArray(res?.users) ? res.users : []
+    loginAudits.value = Array.isArray(res?.loginAudits) ? res.loginAudits : []
+    totalPages.value = res?.pagination?.totalPages || 1
+    totalItems.value = res?.pagination?.total || 0
+  } finally {
+    loading.value = false
+  }
 }
 
 const debouncedLoad = useDebounceFn(() => {
@@ -307,6 +317,23 @@ onMounted(load)
   color: var(--muted);
   text-align: center;
   padding: 2rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.loading-spinner {
+  animation: spin 0.8s linear infinite;
+  border: 2px solid var(--border);
+  border-top-color: #0b63ff;
+  border-radius: 50%;
+  height: 16px;
+  width: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .empty-state p {

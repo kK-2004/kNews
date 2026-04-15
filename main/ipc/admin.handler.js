@@ -226,6 +226,9 @@ function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, authContext }) {
       // Default: filter by current session user; pass { all: true } for admin page
       if (!params?.all && session?.userId) {
         query = query.eq('user_id', session.userId);
+      } else if (!params?.all) {
+        // Not logged in and not requesting all — return empty
+        return { keys: [] };
       }
 
       const { data, error } = await query;
@@ -236,13 +239,13 @@ function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, authContext }) {
           id: k.id,
           name: k.name || '未命名 Key',
           username: k.users?.nickname || '未知',
-          key: k.id,
           rateLimitRph: k.rate_limit || 100,
           callCount: k.call_count || 0,
           call_count: k.call_count || 0,
           lastCallTime: k.last_used || null,
           last_used: k.last_used || null,
           active: k.is_active,
+          is_default: k.is_default || false,
           source_ids: typeof k.source_scope === 'string' ? JSON.parse(k.source_scope) : (Array.isArray(k.source_scope) ? k.source_scope : []),
           max_count: k.max_count || 10,
         })),
@@ -254,6 +257,19 @@ function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, authContext }) {
 
   ipcMain.handle('admin:deleteApiKey', async (_event, id) => {
     try {
+      // Check if this is a default key — prevent deletion
+      const { data: key, error: fetchErr } = await apiKeyRepo.supabase
+        .from('api_key')
+        .select('is_default')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (fetchErr) throw fetchErr;
+
+      if (key?.is_default) {
+        return { error: '默认 API Key 不可删除，但可以修改数据源。' };
+      }
+
       const { error } = await apiKeyRepo.supabase
         .from('api_key')
         .delete()
@@ -271,6 +287,31 @@ function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, authContext }) {
       const { data, error } = await apiKeyRepo.supabase
         .from('api_key')
         .update({ rate_limit: rateLimitRph })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { ok: true, data };
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('admin:updateApiKey', async (_event, id, payload) => {
+    try {
+      const updates = {};
+      if (payload.source_scope !== undefined) updates.source_scope = payload.source_scope;
+      if (payload.name !== undefined) updates.name = payload.name;
+      if (payload.max_count !== undefined) updates.max_count = payload.max_count;
+
+      if (Object.keys(updates).length === 0) {
+        return { error: '没有需要更新的字段' };
+      }
+
+      const { data, error } = await apiKeyRepo.supabase
+        .from('api_key')
+        .update(updates)
         .eq('id', id)
         .select()
         .single();

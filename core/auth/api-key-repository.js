@@ -7,20 +7,47 @@ class ApiKeyRepository {
   }
 
   /**
-   * Find an active API key by its hash.
+   * Find an active API key by hash.
    * @param {string} keyHash
+   * @param {{ isDefault?: boolean }} [options]
    * @returns {Promise<Object|null>}
    */
-  async findByHash(keyHash) {
-    const { data, error } = await this.supabase
+  async findByHash(keyHash, options = {}) {
+    let query = this.supabase
       .from('api_key')
       .select('*')
       .eq('key_hash', keyHash)
+      .eq('is_active', true);
+
+    if (typeof options.isDefault === 'boolean') {
+      query = query.eq('is_default', options.isDefault);
+    }
+
+    const { data, error } = await query.maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to find api_key by hash: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  /**
+   * Find the default API key for a user.
+   * @param {number} userId
+   * @returns {Promise<Object|null>}
+   */
+  async findDefaultByUserId(userId) {
+    const { data, error } = await this.supabase
+      .from('api_key')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_default', true)
       .eq('is_active', true)
       .maybeSingle();
 
     if (error) {
-      throw new Error(`Failed to find api_key by hash: ${error.message}`);
+      throw new Error(`Failed to find default api_key for user ${userId}: ${error.message}`);
     }
 
     return data;

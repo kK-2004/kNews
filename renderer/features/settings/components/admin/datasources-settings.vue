@@ -12,7 +12,11 @@
       <base-input v-model="keyword" placeholder="搜索数据源名称..." />
     </div>
 
-    <div v-if="filteredDatasources.length === 0" class="empty-state">
+    <div v-if="loading" class="empty-state">
+      <span class="loading-spinner" />
+      <p>加载中…</p>
+    </div>
+    <div v-else-if="filteredDatasources.length === 0" class="empty-state">
       <p>暂无匹配的数据源</p>
     </div>
 
@@ -49,6 +53,7 @@ const adminApi = useAdminApi()
 const keyword = ref('')
 const datasources = ref([])
 const pendingId = ref('')
+const loading = ref(true)
 
 const filteredDatasources = computed(() => {
   return datasources.value.filter((item) => {
@@ -69,13 +74,18 @@ const normalizeEnabled = (value) => {
 }
 
 const load = async () => {
-  const res = await adminApi.listDatasources()
-  datasources.value = Array.isArray(res?.items)
-    ? res.items.map((item) => ({
-      ...item,
-      enabled: normalizeEnabled(item.enabled)
-    }))
-    : []
+  loading.value = true
+  try {
+    const res = await adminApi.listDatasources()
+    datasources.value = Array.isArray(res?.items)
+      ? res.items.map((item) => ({
+        ...item,
+        enabled: normalizeEnabled(item.enabled)
+      }))
+      : []
+  } finally {
+    loading.value = false
+  }
 }
 
 const toggleEnabled = async (source, value) => {
@@ -129,6 +139,23 @@ onMounted(load)
   color: var(--muted);
   text-align: center;
   padding: 2rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.loading-spinner {
+  animation: spin 0.8s linear infinite;
+  border: 2px solid var(--border);
+  border-top-color: #0b63ff;
+  border-radius: 50%;
+  height: 16px;
+  width: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .empty-state p {

@@ -22,6 +22,10 @@
         <button type="button" :class="{ active: homeTab === 'china' }" @click="setHomeTab('china')">更多</button>        
       </nav>
       <nav class="desktop-nav">
+        <RouterLink class="header-link ai-link" to="/assistant" title="K-Ai 对话助手">
+          <span class="i-tabler-robot" aria-hidden="true"></span>
+          K-Ai
+        </RouterLink>
         <button
           class="theme-toggle"
           type="button"
@@ -95,6 +99,7 @@
 
     <nav class="mobile-bottom-nav" aria-label="Mobile bottom navigation">
       <RouterLink to="/" aria-label="Home">Home</RouterLink>
+      <RouterLink to="/assistant" aria-label="K-Ai">K-Ai</RouterLink>
       <RouterLink v-if="isLoggedIn" to="/settings" aria-label="Settings">Settings</RouterLink>
     </nav>
 
@@ -221,24 +226,65 @@ const syncAuthToken = () => {
   else localStorage.removeItem('auth_token')
 }
 
+const buildGithubAvatar = (login, fallbackAvatar = '') => {
+  if (!login) return fallbackAvatar || ''
+  return `https://avatars.githubusercontent.com/${login}`
+}
+
 const syncProfile = async () => {
-  if (!userStore.authToken) return
   try {
-    const profile = await authApi.getProfile()
-    if (!profile?.user && !profile?.login && !profile?.id) return
+    // Main process session (session.enc) is the source of truth.
+    // It's restored on boot by bootstrap.js before any window is created.
+    const session = await window.api.auth.getSession()
+    if (!session?.userId) {
+      userStore.clearAuth()
+      syncAuthToken()
+      return
+    }
+
+    const provider = session.provider || userStore.loginType || 'github'
+    const login = session.nickname || userStore.profile?.login || ''
     userStore.setAuth({
-      token: userStore.authToken,
-      type: userStore.loginType || profile.type || 'github',
+      token: userStore.authToken || '',
+      type: provider,
       profile: {
         ...(userStore.profile || {}),
-        name: userStore.profile?.name || profile.nickname || profile.login || '',
-        login: profile.nickname || userStore.profile?.login || '',
-        userId: profile.id || userStore.profile?.userId,
-        level: profile.level ?? userStore.profile?.level ?? 0,
+        name: session.nickname || userStore.profile?.name || '',
+        login,
+        userId: session.userId,
+        level: session.level ?? userStore.profile?.level ?? 0,
+        avatar: provider === 'github'
+          ? buildGithubAvatar(login, userStore.profile?.avatar)
+          : (userStore.profile?.avatar || ''),
       }
     })
+    syncAuthToken()
+
+    // Enrich with DB profile (avatar, updated nickname/level)
+    try {
+      const dbProfile = await authApi.getProfile()
+      if (dbProfile?.id) {
+        const login = dbProfile.nickname || userStore.profile?.login || ''
+        userStore.setAuth({
+          token: userStore.authToken,
+          type: userStore.loginType,
+          profile: {
+            ...userStore.profile,
+            name: dbProfile.nickname || userStore.profile?.name || '',
+            login,
+            userId: dbProfile.id || userStore.profile?.userId,
+            level: dbProfile.level ?? userStore.profile?.level ?? 0,
+            avatar: userStore.loginType === 'github'
+              ? buildGithubAvatar(login, userStore.profile?.avatar)
+              : (userStore.profile?.avatar || ''),
+          }
+        })
+      }
+    } catch {
+      // enrichment failure is non-critical
+    }
   } catch {
-    // ignore profile refresh failures to avoid blocking app boot
+    // ignore session restore failures
   }
 }
 
@@ -276,15 +322,16 @@ const loginWithGithub = async () => {
       return
     }
     if (session) {
+      const login = session.nickname || ''
       userStore.setAuth({
         token: session.userId ? `github-${session.userId}` : 'github',
         type: session.provider || 'github',
         profile: {
           name: session.nickname || '',
-          login: session.nickname || '',
+          login,
           userId: session.userId,
           level: session.level ?? 0,
-          avatar: `https://avatars.githubusercontent.com/` + session.nickname
+          avatar: buildGithubAvatar(login)
         }
       })
       syncAuthToken()

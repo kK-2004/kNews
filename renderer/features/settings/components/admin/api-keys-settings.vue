@@ -82,15 +82,22 @@
 
     <div class="keys-section">
       <h4>API Key 列表</h4>
-      <div v-if="filteredApiKeys.length === 0" class="empty-state">
+      <div v-if="loading" class="empty-state">
+        <span class="loading-spinner" />
+        <p>加载中…</p>
+      </div>
+      <div v-else-if="filteredApiKeys.length === 0" class="empty-state">
         <p>暂无 API Key</p>
       </div>
       <div v-else class="keys-list">
         <div v-for="key in filteredApiKeys" :key="key.id" class="key-card">
           <div class="key-main">
-            <p class="key-name">{{ key.name || '未命名 Key' }}</p>
+            <p class="key-name">
+              {{ key.name || '未命名 Key' }}
+              <span v-if="key.is_default" class="badge-default">内置 Key</span>
+            </p>
             <p class="key-user">用户：{{ key.username || '未知' }}</p>
-            <p class="key-code">{{ key.key }}</p>
+            <p class="key-code key-code-muted">API Key 明文仅在创建时显示一次</p>
             <div class="key-stats">
               <span class="key-stat">限流: {{ key.rateLimitRph || '-' }}/h</span>
               <span class="key-stat">最后: {{ formatLastCall(key.lastCallTime) }}</span>
@@ -98,7 +105,7 @@
           </div>
           <div class="key-actions">
             <base-button size="sm" @click="editRateLimit(key)">限流</base-button>
-            <base-button size="sm" variant="danger" @click="deleteAPIKey(key)">删除</base-button>
+            <base-button v-if="!key.is_default" size="sm" variant="danger" @click="deleteAPIKey(key)">删除</base-button>
           </div>
         </div>
       </div>
@@ -123,6 +130,7 @@ const adminApi = useAdminApi()
 const dateRange = ref('7days')
 const selectedKey = ref('')
 const apikeys = ref([])
+const loading = ref(true)
 const hourlySeries = ref([])
 const leaderboard = ref([])
 const leaderboardHour = ref('')
@@ -270,8 +278,13 @@ const getRangeTs = () => {
 }
 
 const loadApiKeys = async () => {
-  const res = await adminApi.listApiKeys({ all: true, keyId: selectedKey.value })
-  apikeys.value = Array.isArray(res?.keys) ? res.keys : []
+  loading.value = true
+  try {
+    const res = await adminApi.listApiKeys({ all: true, keyId: selectedKey.value })
+    apikeys.value = Array.isArray(res?.keys) ? res.keys : []
+  } finally {
+    loading.value = false
+  }
 }
 
 const loadAnalytics = async () => {
@@ -582,6 +595,18 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
+.badge-default {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, #0b63ff 12%, transparent);
+  color: #0b63ff;
+  vertical-align: middle;
+  margin-left: 0.4rem;
+}
+
 .key-user {
   color: var(--muted);
   font-size: 0.8rem;
@@ -598,6 +623,10 @@ onBeforeUnmount(() => {
   padding: 0.3rem 0.5rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.key-code-muted {
+  color: var(--muted);
 }
 
 .key-stats {
@@ -656,5 +685,18 @@ onBeforeUnmount(() => {
     grid-column: 2;
     text-align: right;
   }
+}
+.loading-spinner {
+  animation: spin 0.8s linear infinite;
+  border: 2px solid var(--border);
+  border-top-color: #0b63ff;
+  border-radius: 50%;
+  display: inline-block;
+  height: 16px;
+  width: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

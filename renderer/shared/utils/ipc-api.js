@@ -130,6 +130,9 @@ export const adminApi = {
   deleteApiKey(id) {
     return ensureApi().admin.deleteApiKey(id).catch(wrapError)
   },
+  updateApiKey(id, payload) {
+    return ensureApi().admin.updateApiKey(id, payload).catch(wrapError)
+  },
   updateApiKeyRateLimit(id, rateLimitRph) {
     return ensureApi().admin.updateApiKeyRateLimit(id, rateLimitRph).catch(wrapError)
   },

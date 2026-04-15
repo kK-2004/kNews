@@ -9,12 +9,14 @@ export function useAuthApi() {
   const listApiKeys = () => adminApi.listApiKeys()
   const createApiKey = (payload) => adminApi.createApiKey(payload)
   const deleteApiKey = (id) => adminApi.deleteApiKey(id)
+  const updateApiKey = (id, payload) => adminApi.updateApiKey(id, payload)
 
   return {
     getLoginStatus,
     getProfile,
     listApiKeys,
     createApiKey,
-    deleteApiKey
+    deleteApiKey,
+    updateApiKey
   }
 }

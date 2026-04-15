@@ -17,7 +17,7 @@ class FeedService {
    * @returns {Promise<Object[]>} Array of { source, data } objects.
    */
   async getFeeds() {
-    const sources = await this.sourceRepository.findAll();
+    const sources = await this.sourceRepository.findAll(true);
 
     const feeds = await Promise.all(
       sources.map(async (source) => {

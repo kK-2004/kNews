@@ -25,7 +25,9 @@ function register(ipcMain, { userRepo, userService, prefRepo, authContext }) {
       if (userId) {
         return await userRepo.findById(userId);
       }
-      return null;
+      const session = authContext.getSession();
+      if (!session?.userId) return null;
+      return await userRepo.findById(session.userId);
     } catch (err) {
       return { error: err.message };
     }

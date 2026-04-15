@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld("api", {
     listUserKeys: (id) => ipcRenderer.invoke("admin:listUserKeys", id),
     listApiKeys: (params) => ipcRenderer.invoke("admin:listApiKeys", params),
     deleteApiKey: (id) => ipcRenderer.invoke("admin:deleteApiKey", id),
+    updateApiKey: (id, payload) => ipcRenderer.invoke("admin:updateApiKey", id, payload),
     updateApiKeyRateLimit: (id, rateLimitRph) => ipcRenderer.invoke("admin:updateApiKeyRateLimit", id, rateLimitRph),
     getAnalytics: (params) => ipcRenderer.invoke("admin:getAnalytics", params),
   },
@@ -82,5 +83,41 @@ contextBridge.exposeInMainWorld("api", {
   subscription: {
     getCurrent: () => ipcRenderer.invoke("subscription:getCurrent"),
     create: (plan) => ipcRenderer.invoke("subscription:create", { plan }),
+  },
+
+  chat: {
+    listSessions: () => ipcRenderer.invoke("chat:listSessions"),
+    getSession: (sessionId) => ipcRenderer.invoke("chat:getSession", sessionId),
+    createSession: () => ipcRenderer.invoke("chat:createSession"),
+    sendMessage: (sessionId, content, isHotTopic) =>
+      ipcRenderer.invoke("chat:sendMessage", { sessionId, content, isHotTopic }),
+    deleteSession: (sessionId) => ipcRenderer.invoke("chat:deleteSession", sessionId),
+    sendMessageStream: (sessionId, content, isHotTopic, callbacks) => {
+      const { onStatus, onToken, onDone, onError } = callbacks;
+      const handler = (_event, streamEvent) => {
+        switch (streamEvent.type) {
+          case "status":
+            if (onStatus) onStatus(streamEvent.text);
+            break;
+          case "token":
+            if (onToken) onToken(streamEvent.text);
+            break;
+          case "done":
+            ipcRenderer.removeListener("chat:streamEvent", handler);
+            if (onDone) onDone(streamEvent.userMessage, streamEvent.assistantMessage);
+            break;
+          case "error":
+            ipcRenderer.removeListener("chat:streamEvent", handler);
+            if (onError) onError(streamEvent.error);
+            break;
+        }
+      };
+      ipcRenderer.on("chat:streamEvent", handler);
+      ipcRenderer.send("chat:sendMessageStream", { sessionId, content, isHotTopic });
+      return () => {
+        ipcRenderer.removeListener("chat:streamEvent", handler);
+      };
+    },
+    abortStream: () => ipcRenderer.send("chat:abortStream"),
   },
 });

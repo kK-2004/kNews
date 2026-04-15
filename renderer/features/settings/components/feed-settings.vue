@@ -7,7 +7,11 @@
 
     <p v-if="error" class="error">{{ error }}</p>
 
-    <div v-if="sources.length === 0" class="empty-state">
+    <div v-if="loading" class="empty-state">
+      <span class="loading-spinner" />
+      <p>加载中…</p>
+    </div>
+    <div v-else-if="sources.length === 0" class="empty-state">
       <p>暂无可用的模块</p>
       <small>所有数据源已在后台禁用</small>
     </div>
@@ -41,14 +45,18 @@ const sourcesApi = useSourcesApi()
 const sources = ref([])
 const pendingId = ref('')
 const error = ref('')
+const loading = ref(true)
 
 const load = async () => {
   error.value = ''
+  loading.value = true
   try {
     const items = await sourcesApi.fetchSources()
     sources.value = [...(items || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN'))
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载模块失败'
+  } finally {
+    loading.value = false
   }
 }
 
@@ -91,6 +99,24 @@ onMounted(load)
   color: var(--muted);
   text-align: center;
   padding: 3rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.loading-spinner {
+  animation: spin 0.8s linear infinite;
+  border: 2px solid var(--border);
+  border-top-color: #0b63ff;
+  border-radius: 50%;
+  height: 16px;
+  width: 16px;
+  margin: 0 auto;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .empty-state p {
