@@ -339,7 +339,7 @@ class McpServer {
     });
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
-      enableJsonResponse: false,
+      enableJsonResponse: true,
     });
 
     try {
@@ -407,8 +407,25 @@ class McpServer {
 
   async _sendWebResponse(res, response) {
     res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
-    const body = response.body ? Buffer.from(await response.arrayBuffer()) : null;
-    res.end(body || undefined);
+    if (!response.body) {
+      res.end();
+      return;
+    }
+
+    const reader = response.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!res.write(Buffer.from(value))) {
+          await new Promise((resolve) => res.once('drain', resolve));
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    res.end();
   }
 }
 

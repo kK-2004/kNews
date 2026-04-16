@@ -238,6 +238,10 @@ function statusClass(status) {
 }
 
 function formatLatestStatus(event) {
+  if (event?.status === 'ready' || event?.status === 'failed') {
+    return event?.detail || ''
+  }
+
   const sourceName = event?.sourceName || event?.sourceId || '热点'
   const prefix = `调用MCP获取中... ｜ [${sourceName}]`
   const statusMap = {

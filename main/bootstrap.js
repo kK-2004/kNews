@@ -110,6 +110,7 @@ async function bootstrap({ safeStorage, shell }) {
     localCache,
     apiKeyRepo,
     authContext,
+    mcpServer: null,
   });
 
   // 7. AuthContext + SessionPersistence
@@ -148,6 +149,7 @@ async function bootstrap({ safeStorage, shell }) {
     apiKeyRepository: apiKeyRepo,
   });
   await mcpServer.start();
+  chatService.mcpServer = mcpServer;
 
   // 11. Restore session (with expiration check)
   console.log('[bootstrap] Restoring session...');

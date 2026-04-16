@@ -1,5 +1,8 @@
 'use strict';
 
+const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
+const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
+
 /**
  * ChatService – orchestrates chat sessions, LLM calls and hot-topic injection.
  */
@@ -13,8 +16,9 @@ class ChatService {
    * @param {import('../cache/local-cache-repository')} deps.localCache
    * @param {import('../auth/api-key-repository')} [deps.apiKeyRepo]
    * @param {import('../auth/auth-context')} [deps.authContext]
+   * @param {import('../mcp/mcp-server')} [deps.mcpServer]
    */
-  constructor({ chatRepository, llmClient, feedService, sourceRepository, localCache, apiKeyRepo, authContext }) {
+  constructor({ chatRepository, llmClient, feedService, sourceRepository, localCache, apiKeyRepo, authContext, mcpServer }) {
     this.chatRepository = chatRepository;
     this.llmClient = llmClient;
     this.feedService = feedService;
@@ -22,6 +26,7 @@ class ChatService {
     this.localCache = localCache;
     this.apiKeyRepo = apiKeyRepo;
     this.authContext = authContext;
+    this.mcpServer = mcpServer || null;
   }
 
   /**
@@ -179,151 +184,170 @@ class ChatService {
       onStatus({ status, detail, ...extra });
     };
 
-    emitStatus('start', '开始拉取热点渠道状态...');
-
-    // Resolve source scope & limits from user's default MCP API key
-    let sourceScope = null;
-    let maxCount = 12;
-    try {
-      const session = this.authContext?.getSession?.();
-      if (session?.userId && this.apiKeyRepo) {
-        const defaultKey = await this.apiKeyRepo.findDefaultByUserId(session.userId);
-        if (defaultKey) {
-          const scope = typeof defaultKey.source_scope === 'string'
-            ? JSON.parse(defaultKey.source_scope)
-            : (Array.isArray(defaultKey.source_scope) ? defaultKey.source_scope : null);
-          if (scope && scope.length > 0) {
-            sourceScope = scope;
-          }
-          maxCount = Math.min(defaultKey.max_count || 12, 50);
-        }
-      }
-    } catch (_e) {
-      // Fall back to full access
+    emitStatus('start', 'MCP调用中...');
+    const defaultKey = await this._getDefaultMcpApiKey();
+    if (!defaultKey?.key_hash) {
+      emitStatus('failed', 'MCP调用失败！｜ 未找到可用的默认 MCP API Key');
+      return null;
     }
 
-    // Resolve user level for refresh control
-    const session = this.authContext?.getSession?.();
-    const userLevel = session?.level ?? 0;
-    const canSyncRefresh = userLevel >= 1;
+    const endpoint = this._getMcpEndpoint();
+    const client = new Client(
+      { name: 'kNews ChatService', version: '0.1.0' },
+      { capabilities: {} },
+    );
+    const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
+      requestInit: {
+        headers: {
+          Authorization: `Bearer ${defaultKey.key_hash}`,
+        },
+      },
+    });
 
-    const sources = await this.sourceRepository.findAll(true);
-    const targetSources = sourceScope
-      ? sources.filter((s) => sourceScope.includes(s.id))
-      : sources;
+    try {
+      await client.connect(transport);
 
-    const sourceTasks = targetSources.slice(0, 8).map(async (source, index) => {
-      emitStatus('start', `正在拉取【${source.name}】热点`, {
-        sourceId: source.id,
-        sourceName: source.name,
-      });
+      const availableResult = await client.callTool({ name: 'get_available_sources', arguments: {} });
+      const available = this._parseAvailableSources(this._getToolText(availableResult));
 
-      const freshSource = await this.sourceRepository.findById(source.id);
-      if (!freshSource || freshSource.enabled === false) {
-        emitStatus('skipped', `【${source.name}】已全局禁用，跳过拉取`, {
+      if (!available.sources.length) {
+        emitStatus('failed', 'MCP调用失败！｜ 当前默认 MCP API Key 没有可用热点源');
+        return null;
+      }
+
+      const perSourceCount = Math.min(3, available.maxCount || 12);
+      let firstError = '';
+      const sourceTasks = available.sources.slice(0, 8).map(async (source, index) => {
+        emitStatus('start', `正在通过 MCP 拉取【${source.name}】热点`, {
           sourceId: source.id,
           sourceName: source.name,
         });
-        return { index, lines: [] };
-      }
 
-      const cacheEntry = this.localCache.read(source.id);
+        try {
+          const result = await client.callTool({
+            name: 'get_hotest_latest_news',
+            arguments: { id: source.id, count: perSourceCount },
+          });
+          const text = this._getToolText(result);
+          const lines = this._parseNewsItems(text, source.name);
 
-      let items = cacheEntry?.data || null;
-      let fetchedAt = cacheEntry?.fetchedAt || '';
-      const isStale = this.localCache.isStale(source.id);
-
-      if (isStale || !items) {
-        if (this.feedService.scraperEngine) {
-          if (!items) {
-            // Cache missing — always sync refresh regardless of level
-            const refreshResult = await this.feedService.scraperEngine.refreshOne(source.id);
-            if (refreshResult?.disabled) {
-              emitStatus('skipped', `【${source.name}】已禁用，未执行补拉`, {
-                sourceId: source.id,
-                sourceName: source.name,
-              });
-              return { index, lines: [] };
-            }
-            if (refreshResult?.error) {
-              emitStatus('failed', `【${source.name}】拉取失败：${refreshResult.error}`, {
-                sourceId: source.id,
-                sourceName: source.name,
-              });
-            }
-            const refreshed = this.localCache.read(source.id);
-            items = refreshed?.data || null;
-            fetchedAt = refreshed?.fetchedAt || '';
-          } else if (canSyncRefresh) {
-            // Stale + paid user (level >= 1) — sync refresh for fresh data
-            const refreshResult = await this.feedService.scraperEngine.refreshOne(source.id);
-            if (refreshResult?.disabled) {
-              emitStatus('skipped', `【${source.name}】已禁用，未执行刷新`, {
-                sourceId: source.id,
-                sourceName: source.name,
-              });
-              return { index, lines: [] };
-            }
-            if (refreshResult?.error) {
-              emitStatus('failed', `【${source.name}】刷新失败：${refreshResult.error}`, {
-                sourceId: source.id,
-                sourceName: source.name,
-              });
-            }
-            const refreshed = this.localCache.read(source.id);
-            items = refreshed?.data || null;
-            fetchedAt = refreshed?.fetchedAt || '';
-          } else {
-            // Stale + free user (level 0) — use stale cache, background refresh
-            this.feedService.scraperEngine.refreshOne(source.id).then((refreshResult) => {
-              if (refreshResult?.disabled) {
-                emitStatus('skipped', `【${source.name}】已禁用，后台刷新已跳过`, {
-                  sourceId: source.id,
-                  sourceName: source.name,
-                });
-              }
-            }).catch((err) => {
-              emitStatus('failed', `【${source.name}】后台刷新失败：${err.message}`, {
-                sourceId: source.id,
-                sourceName: source.name,
-              });
-            });
-            emitStatus('skipped', `【${source.name}】缓存已过期，当前先展示旧数据`, {
+          if (!lines.length) {
+            emitStatus('empty', `【${source.name}】暂无可用热点`, {
               sourceId: source.id,
               sourceName: source.name,
             });
+            return { index, lines: [] };
           }
+
+          emitStatus('success', `【${source.name}】拉取成功`, {
+            sourceId: source.id,
+            sourceName: source.name,
+          });
+          return { index, lines };
+        } catch (error) {
+          const message = error?.message || '未知错误';
+          if (!firstError) firstError = message;
+          emitStatus('failed', `【${source.name}】拉取失败：${message}`, {
+            sourceId: source.id,
+            sourceName: source.name,
+          });
+          return { index, lines: [] };
         }
+      });
+
+      const results = await Promise.all(sourceTasks);
+      const lines = results
+        .sort((a, b) => a.index - b.index)
+        .flatMap((result) => result.lines);
+
+      if (lines.length > 0) {
+        emitStatus('ready', 'MCP调用成功！');
+        return lines.join('\n');
       }
 
-      const lines = [];
-      if (items && items.length > 0) {
-        for (const item of items.slice(0, Math.min(3, maxCount))) {
-          const title = item.title || '';
-          const url = item.url || item.link || '';
-          const date = item.date || '';
-          lines.push(`- [${source.name}] ${title}${url ? ' ' + url : ''}${date ? ' (' + date + ')' : ''}${fetchedAt ? ' [更新于 ' + new Date(fetchedAt).toLocaleString('zh-CN') + ']' : ''}`);
-        }
-        emitStatus('success', `【${source.name}】拉取成功`, {
-          sourceId: source.id,
-          sourceName: source.name,
-        });
-      } else {
-        emitStatus('empty', `【${source.name}】暂无可用热点`, {
-          sourceId: source.id,
-          sourceName: source.name,
-        });
-      }
+      emitStatus(
+        'failed',
+        `MCP调用失败！｜ ${firstError || '未获取到可用热点数据'}`,
+      );
 
-      return { index, lines };
-    });
+      return null;
+    } catch (error) {
+      emitStatus('failed', `MCP调用失败！｜ ${error?.message || '未知错误'}`);
+      return null;
+    } finally {
+      await client.close().catch(() => {});
+    }
+  }
 
-    const results = await Promise.all(sourceTasks);
-    const lines = results
-      .sort((a, b) => a.index - b.index)
-      .flatMap((result) => result.lines);
+  async _getDefaultMcpApiKey() {
+    const session = this.authContext?.getSession?.();
+    if (!session?.userId || !this.apiKeyRepo) {
+      return null;
+    }
+    return this.apiKeyRepo.findDefaultByUserId(session.userId);
+  }
 
-    return lines.length > 0 ? lines.join('\n') : null;
+  _getMcpEndpoint() {
+    const port = this.mcpServer?.port;
+    if (!port) {
+      throw new Error('本地 MCP 服务未启动。');
+    }
+    return `http://127.0.0.1:${port}/mcp`;
+  }
+
+  _getToolText(result) {
+    if (result?.isError) {
+      const message = (Array.isArray(result.content) ? result.content : [])
+        .filter((item) => item?.type === 'text')
+        .map((item) => item.text || '')
+        .join('\n')
+        .trim();
+      throw new Error(message || 'MCP 工具调用失败。');
+    }
+
+    return (Array.isArray(result?.content) ? result.content : [])
+      .filter((item) => item?.type === 'text')
+      .map((item) => item.text || '')
+      .join('\n')
+      .trim();
+  }
+
+  _parseAvailableSources(text) {
+    const lines = String(text || '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const header = lines[0] || '';
+    const maxCountMatch = header.match(/max_count=(\d+)/i);
+    const sources = lines.slice(1)
+      .map((line) => {
+        const match = line.match(/^([^:]+):\s*(.+)$/);
+        if (!match) return null;
+        return {
+          id: match[1].trim(),
+          name: match[2].trim(),
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      maxCount: maxCountMatch ? Number(maxCountMatch[1]) : 12,
+      sources,
+    };
+  }
+
+  _parseNewsItems(text, sourceName) {
+    return String(text || '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const match = line.match(/^- \[(.+?)\]\((.+?)\)(?: \((.+?)\))?$/);
+        if (!match) return null;
+        const [, title, url, date] = match;
+        return `- [${sourceName}] ${title}${url ? ` ${url}` : ''}${date ? ` (${date})` : ''}`;
+      })
+      .filter(Boolean);
   }
 
   /**
