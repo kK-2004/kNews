@@ -7,12 +7,24 @@ export const useChatStore = defineStore('use-chat-store', {
     messages: [],
     sending: false,
     error: null,
-    agentStatus: null,
+    statusEvents: [],
     streamingContent: null,
+    streamingThinking: '',
+    thinkingExpanded: false,
+    pendingAbort: false,
   }),
   getters: {
     currentSession: (state) =>
       state.sessions.find((s) => s.id === state.currentSessionId) || null,
+    latestStatusEvent: (state) =>
+      state.statusEvents.length > 0 ? state.statusEvents[state.statusEvents.length - 1] : null,
+    latestThinkingLine: (state) => {
+      const text = (state.streamingThinking || '').trim()
+      if (!text) return ''
+      const lines = text.split('\n').map((line) => line.trim()).filter(Boolean)
+      const latest = lines.length > 0 ? lines[lines.length - 1] : text
+      return latest.length > 80 ? `${latest.slice(0, 80)}...` : latest
+    },
   },
   actions: {
     async loadSessions() {
@@ -37,8 +49,11 @@ export const useChatStore = defineStore('use-chat-store', {
     async selectSession(sessionId) {
       this.currentSessionId = sessionId
       this.error = null
-      this.agentStatus = null
+      this.statusEvents = []
       this.streamingContent = null
+      this.streamingThinking = ''
+      this.thinkingExpanded = false
+      this.pendingAbort = false
       if (!sessionId) {
         this.messages = []
         return
@@ -68,8 +83,11 @@ export const useChatStore = defineStore('use-chat-store', {
       this.currentSessionId = session.id
       this.messages = []
       this.error = null
-      this.agentStatus = null
+      this.statusEvents = []
       this.streamingContent = null
+      this.streamingThinking = ''
+      this.thinkingExpanded = false
+      this.pendingAbort = false
       return session
     },
 
@@ -81,8 +99,11 @@ export const useChatStore = defineStore('use-chat-store', {
 
       this.sending = true
       this.error = null
-      this.agentStatus = null
+      this.statusEvents = []
       this.streamingContent = null
+      this.streamingThinking = ''
+      this.thinkingExpanded = false
+      this.pendingAbort = false
 
       // Optimistic: show user message immediately
       const optimisticMsg = {
@@ -105,21 +126,49 @@ export const useChatStore = defineStore('use-chat-store', {
             content,
             isHotTopic,
             {
-              onStatus: (text) => {
-                this.agentStatus = text
+              onStatus: (event) => {
+                this.statusEvents.push({
+                  id: `${Date.now()}-${this.statusEvents.length}`,
+                  status: event?.status || 'info',
+                  sourceId: event?.sourceId || '',
+                  sourceName: event?.sourceName || '',
+                  detail: event?.detail || event?.text || '',
+                })
+              },
+              onThinking: (text) => {
+                this.streamingThinking += text
               },
               onToken: (text) => {
-                this.agentStatus = null
                 if (this.streamingContent === null) this.streamingContent = ''
                 this.streamingContent += text
               },
-              onDone: (userMessage, assistantMessage) => {
+              onDone: (userMessage, assistantMessage, aborted) => {
                 // Replace optimistic user msg with server version + add assistant
                 this.messages.pop()
                 this.messages.push(userMessage)
-                this.messages.push(assistantMessage)
+
+                const finalAssistantMessage = assistantMessage
+                  ? {
+                      ...assistantMessage,
+                      content: aborted ? `${assistantMessage.content}\n\n_[已中断]_` : assistantMessage.content,
+                    }
+                  : (aborted && this.streamingContent
+                    ? {
+                        role: 'assistant',
+                        content: `${this.streamingContent}\n\n_[已中断]_`,
+                        timestamp: new Date().toISOString(),
+                      }
+                    : null)
+
+                if (finalAssistantMessage) {
+                  this.messages.push(finalAssistantMessage)
+                }
+
                 this.streamingContent = null
-                this.agentStatus = null
+                this.streamingThinking = ''
+                this.thinkingExpanded = false
+                this.statusEvents = []
+                this.pendingAbort = false
 
                 // Update session in list
                 if (session) {
@@ -135,7 +184,10 @@ export const useChatStore = defineStore('use-chat-store', {
               onError: (error) => {
                 this.error = error
                 this.streamingContent = null
-                this.agentStatus = null
+                this.streamingThinking = ''
+                this.thinkingExpanded = false
+                this.statusEvents = []
+                this.pendingAbort = false
                 reject(new Error(error))
               },
             },
@@ -149,19 +201,13 @@ export const useChatStore = defineStore('use-chat-store', {
     },
 
     abortSending() {
+      this.pendingAbort = true
       window.api.chat.abortStream()
-      // Save partial streaming content as a message if any
-      if (this.streamingContent) {
-        this.messages.push({
-          role: 'assistant',
-          content: this.streamingContent + '\n\n_[已中断]_',
-          timestamp: new Date().toISOString(),
-        })
-      }
-      this.streamingContent = null
-      this.agentStatus = null
-      this.sending = false
       this.error = null
+    },
+
+    toggleThinkingExpanded() {
+      this.thinkingExpanded = !this.thinkingExpanded
     },
 
     async deleteSession(sessionId) {

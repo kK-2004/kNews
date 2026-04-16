@@ -40,9 +40,16 @@ class FeedService {
    * @returns {Promise<any[]|null>}
    */
   async getFeedsBySource(sourceId) {
+    const source = await this.sourceRepository.findById(sourceId);
+    if (!source || source.enabled === false) {
+      return null;
+    }
     let data = await this.feedRepository.findCached(sourceId);
     if (!data && this.scraperEngine) {
-      await this.scraperEngine.refreshOne(sourceId);
+      const refreshResult = await this.scraperEngine.refreshOne(sourceId);
+      if (refreshResult?.disabled) {
+        return null;
+      }
       data = await this.feedRepository.findCached(sourceId);
     }
     return data;
@@ -57,6 +64,11 @@ class FeedService {
   async getCachedBatch(sourceIds) {
     const result = {};
     for (const id of sourceIds) {
+      const source = await this.sourceRepository.findById(id);
+      if (!source || source.enabled === false) {
+        result[id] = [];
+        continue;
+      }
       const data = await this.feedRepository.findCached(id);
       result[id] = data || [];
     }

@@ -229,13 +229,22 @@ class McpServer {
    * @returns {Promise<object|null>}
    */
   async _authenticate(req) {
+    let apiKey = '';
+
+    // 1. Try Authorization: Bearer header
     const authHeader = req.headers['authorization'];
-    if (!authHeader || typeof authHeader !== 'string') return null;
+    if (authHeader && typeof authHeader === 'string') {
+      const match = authHeader.match(/^Bearer\s+(.+)$/i);
+      if (match) apiKey = match[1].trim();
+    }
 
-    const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    if (!match) return null;
+    // 2. Fallback: ?apikey= query parameter
+    if (!apiKey) {
+      const url = new URL(req.url, `http://localhost:${this.port}`);
+      apiKey = (url.searchParams.get('apikey') || '').trim();
+    }
 
-    const apiKey = match[1].trim();
+    if (!apiKey) return null;
 
     try {
       // Default keys may already be passed around as the stored hash value.

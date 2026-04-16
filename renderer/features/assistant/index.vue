@@ -1,6 +1,5 @@
 <template>
   <div class="assistant-page">
-    <!-- Sidebar -->
     <aside class="chat-sidebar">
       <button class="new-chat-btn" type="button" @click="onNewChat">
         <span class="i-tabler-plus" aria-hidden="true"></span>
@@ -23,9 +22,7 @@
       </div>
     </aside>
 
-    <!-- Main area -->
     <main class="chat-main">
-      <!-- Top bar -->
       <header class="chat-topbar">
         <h2 class="topbar-title">K-Ai</h2>
         <div class="topbar-status">
@@ -34,9 +31,7 @@
         </div>
       </header>
 
-      <!-- Messages -->
       <div ref="messagesRef" class="chat-messages">
-        <!-- Empty state -->
         <div v-if="chatStore.messages.length === 0 && !chatStore.sending" class="empty-state">
           <div class="empty-icon">
             <span class="i-tabler-robot" aria-hidden="true"></span>
@@ -45,7 +40,6 @@
           <p class="empty-desc">你可以问我任何关于新闻的问题，或点击下方热点快捷入口</p>
         </div>
 
-        <!-- Message list -->
         <div
           v-for="(msg, idx) in chatStore.messages"
           :key="idx"
@@ -63,48 +57,53 @@
           </div>
         </div>
 
-        <!-- Agent status -->
-        <div v-if="chatStore.agentStatus" class="message-row assistant agent-status-row">
+        <div
+          v-if="chatStore.sending || chatStore.statusEvents.length > 0 || chatStore.streamingThinking || chatStore.streamingContent !== null"
+          class="message-row assistant"
+        >
           <div class="avatar avatar-ai">
             <span class="i-tabler-robot" aria-hidden="true"></span>
           </div>
-          <div class="agent-status-bubble">
-            <span class="status-spinner"></span>
-            <span class="status-label">{{ chatStore.agentStatus }}</span>
-          </div>
-        </div>
+          <div class="message-bubble assistant streaming pending-bubble">
+            <div
+              v-if="chatStore.latestStatusEvent"
+              :class="['status-line', statusClass(chatStore.latestStatusEvent.status)]"
+            >
+              <span class="status-line-text">{{ formatLatestStatus(chatStore.latestStatusEvent) }}</span>
+            </div>
 
-        <!-- Streaming message -->
-        <div v-if="chatStore.streamingContent !== null" class="message-row assistant">
-          <div class="avatar avatar-ai">
-            <span class="i-tabler-robot" aria-hidden="true"></span>
-          </div>
-          <div class="message-bubble assistant streaming">
-            <div class="message-text" v-html="renderMarkdown(chatStore.streamingContent)"></div>
-            <span class="cursor-blink">|</span>
-          </div>
-        </div>
+            <button
+              v-if="chatStore.streamingThinking"
+              class="thinking-panel"
+              type="button"
+              @click="chatStore.toggleThinkingExpanded()"
+            >
+              <div class="thinking-label">
+                <span class="thinking-dots"><span></span><span></span><span></span></span>
+                <span>思考中...</span>
+                <span class="thinking-toggle">{{ chatStore.thinkingExpanded ? '收起' : '展开' }}</span>
+              </div>
+              <div v-if="chatStore.thinkingExpanded" class="thinking-text">{{ chatStore.streamingThinking }}</div>
+              <div v-else class="thinking-preview">{{ chatStore.latestThinkingLine || '正在整理最新思路...' }}</div>
+            </button>
 
-        <!-- Loading (shown only when no streaming content and no agent status) -->
-        <div v-if="chatStore.sending && !chatStore.streamingContent && !chatStore.agentStatus" class="message-row assistant">
-          <div class="avatar avatar-ai">
-            <span class="i-tabler-robot" aria-hidden="true"></span>
-          </div>
-          <div class="message-bubble assistant loading">
-            <div class="loading-dots">
+            <template v-if="chatStore.streamingContent">
+              <div class="message-text pending-text" v-html="renderMarkdown(chatStore.streamingContent)"></div>
+              <span class="cursor-blink">|</span>
+            </template>
+
+            <div v-else-if="chatStore.sending && !chatStore.streamingThinking" class="loading-dots">
               <span></span><span></span><span></span>
             </div>
           </div>
         </div>
 
-        <!-- Error -->
         <div v-if="chatStore.error" class="chat-error">
           <span class="i-tabler-alert-circle" aria-hidden="true"></span>
           {{ chatStore.error }}
         </div>
       </div>
 
-      <!-- Input -->
       <div class="chat-input-area">
         <div class="input-wrapper">
           <textarea
@@ -136,11 +135,9 @@
           </button>
         </div>
 
-        <!-- Hot topics -->
         <div v-if="hotTopics.length > 0 && chatStore.messages.length === 0" class="hot-topics">
           <button
             v-for="(topic, idx) in hotTopics"
-            :key="idx"
             class="hot-topic-chip"
             type="button"
             @click="onHotTopic(topic)"
@@ -171,7 +168,6 @@ const hotTopics = ref([
 
 onMounted(async () => {
   await chatStore.loadSessions()
-  // loadSessions already handles 5-min auto-select logic
 })
 
 watch(
@@ -189,7 +185,11 @@ watch(
   () => nextTick(scrollToBottom),
 )
 watch(
-  () => chatStore.agentStatus,
+  () => chatStore.statusEvents.length,
+  () => nextTick(scrollToBottom),
+)
+watch(
+  () => chatStore.streamingThinking,
   () => nextTick(scrollToBottom),
 )
 
@@ -233,37 +233,98 @@ function openUrl(url) {
   window.open(url, '_blank')
 }
 
+function statusClass(status) {
+  return `status-${status || 'info'}`
+}
+
+function formatLatestStatus(event) {
+  const sourceName = event?.sourceName || event?.sourceId || '热点'
+  const prefix = `调用MCP获取中... ｜ [${sourceName}]`
+  const statusMap = {
+    start: '拉取中',
+    success: '拉取成功',
+    failed: '拉取失败',
+    skipped: '已跳过',
+    empty: '暂无数据',
+    ready: '拉取成功',
+  }
+  return `${prefix} ${statusMap[event?.status] || '处理中'}`
+}
+
 /**
  * Render assistant markdown content into HTML with clickable news cards.
  */
 function renderMarkdown(text) {
   if (!text) return ''
-  let html = escapeHtml(text)
+  const normalized = text.replace(/\r/g, '')
+  const newsTokens = []
+  let newsIndex = 0
 
-  // Convert markdown links [text](url) into clickable news cards
-  html = html.replace(
-    /\*\*([^*]+)\*\*\s*[-—]\s*([^[]*?)\s*\[([^\]]*)\]\(([^)]+)\)/g,
-    (_, title, desc, linkText, url) => {
-      return `<div class="news-card" onclick="window._openNewsUrl('${escapeAttr(url)}')">
-        <div class="news-card-title">${title}</div>
-        <div class="news-card-desc">${desc.trim()}</div>
-        <div class="news-card-link">${linkText || '查看原文'} →</div>
-      </div>`
-    },
-  )
+  const withNewsTokens = normalized
+    .replace(
+      /(\d+)\.\s*\n+\s*\*\*([^*]+)\*\*\s*[-—]\s*(.*?)\s*\[([^\]]*)\]\(([^)]+)\)/g,
+      (_, order, title, desc, linkText, url) => {
+        const token = `@@NEWS_${newsIndex}@@`
+        const source = extractSource(title, desc, linkText)
+        newsTokens.push({ order, title: stripSource(title), desc: stripSource(desc), linkText, url, source })
+        newsIndex += 1
+        return token
+      },
+    )
+    .replace(
+      /(\d+)\.\s*\*\*([^*]+)\*\*\s*[-—]\s*(.*?)\s*\[([^\]]*)\]\(([^)]+)\)/g,
+      (_, order, title, desc, linkText, url) => {
+        const token = `@@NEWS_${newsIndex}@@`
+        const source = extractSource(title, desc, linkText)
+        newsTokens.push({ order, title: stripSource(title), desc: stripSource(desc), linkText, url, source })
+        newsIndex += 1
+        return token
+      },
+    )
+    .replace(
+      /\*\*([^*]+)\*\*\s*[-—]\s*(.*?)\s*\[([^\]]*)\]\(([^)]+)\)/g,
+      (_, title, desc, linkText, url) => {
+        const token = `@@NEWS_${newsIndex}@@`
+        const source = extractSource(title, desc, linkText)
+        newsTokens.push({ order: String(newsIndex + 1), title: stripSource(title), desc: stripSource(desc), linkText, url, source })
+        newsIndex += 1
+        return token
+      },
+    )
 
-  // Convert remaining markdown links
+  let html = escapeHtml(withNewsTokens)
+
+  // 标题：支持 1-6 级，允许行首空格
+  html = html.replace(/^(#{1,6})\s+(.+)$/gm, (_, hashes, title) => {
+    const level = hashes.length
+    return `<div class="md-heading md-heading-${level}">${title}</div>`
+  })
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  // 有序列表：允许行首空格
+  html = html.replace(/^\s*(\d+)\.\s+(.+)$/gm, '<div class="md-list-item"><span class="list-num">$1.</span><span>$2</span></div>')
+  // 无序列表：支持 * 或 - 开头
+  html = html.replace(/^\s*[-*]\s+(.+)$/gm, '<div class="md-list-item"><span class="list-bullet">•</span><span>$1</span></div>')
+
+  // ⚠️ 关键修正：必须在插入卡片 HTML 之前执行换行符替换
+  html = html.replace(/\n{3,}/g, '<br><br>')
+  html = html.replace(/\n{2}/g, '<br><br>')
+  html = html.replace(/\n/g, '<br>')
+
+  // 插入已格式化好且无多余换行符的新闻卡片 HTML 节点
+  newsTokens.forEach((item, idx) => {
+    const token = `@@NEWS_${idx}@@`
+    const sourceTag = item.source ? `<span class="news-row-source">${escapeHtml(item.source)}</span>` : ''
+    html = html.replace(
+      token,
+      `<div class="news-row" onclick="window._openNewsUrl('${escapeAttr(item.url)}')"><div class="news-row-index">${escapeHtml(item.order)}</div><div class="news-row-body"><div class="news-row-title">${escapeHtml(item.title)}${sourceTag}</div><div class="news-row-desc">${escapeHtml(item.desc.trim())}</div></div></div>`
+    )
+  })
+
+  // 处理剩余可能出现的标准 Markdown 链接
   html = html.replace(
     /\[([^\]]*)\]\(([^)]+)\)/g,
     '<a class="md-link" href="#" onclick="event.preventDefault();window._openNewsUrl(\'$2\')">$1</a>',
   )
-
-  // Bold
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-  // Numbered list items
-  html = html.replace(/^(\d+)\.\s/gm, '<span class="list-num">$1.</span> ')
-  // Line breaks
-  html = html.replace(/\n/g, '<br>')
 
   return html
 }
@@ -279,7 +340,19 @@ function escapeAttr(str) {
   return str.replace(/'/g, "\\'").replace(/"/g, '&quot;')
 }
 
-// Expose openUrl for onclick handlers in rendered HTML
+/**
+ * Extract source tag like [来源名] from title or linkText.
+ */
+function extractSource(title, desc, linkText) {
+  const combined = `${title} ${desc} ${linkText}`
+  const m = combined.match(/[【\[]([^\]】]+)[\]】]/)
+  return m ? m[1] : ''
+}
+
+function stripSource(str) {
+  return str.replace(/[【\[][^\]】]+[\]】]/g, '').trim()
+}
+
 if (typeof window !== 'undefined') {
   window._openNewsUrl = openUrl
 }
@@ -548,8 +621,8 @@ if (typeof window !== 'undefined') {
 }
 
 .message-bubble {
-  max-width: 80%;
-  padding: 0.75rem 1.15rem;
+  max-width: 78%;
+  padding: 0.72rem 1rem;
   border-radius: 1rem;
   line-height: 1.6;
   font-size: 0.92rem;
@@ -567,6 +640,10 @@ if (typeof window !== 'undefined') {
   color: var(--text);
   border: 1px solid var(--border);
   border-top-left-radius: 0.2rem;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+  width: min(44rem, calc(100vw - 8rem));
+  max-width: min(44rem, calc(100vw - 8rem));
+  flex: 0 0 min(44rem, calc(100vw - 8rem));
 }
 
 .message-bubble.loading {
@@ -574,7 +651,7 @@ if (typeof window !== 'undefined') {
 }
 
 .message-bubble.streaming {
-  padding-right: 1.5rem;
+  padding-right: 1.1rem;
 }
 
 .cursor-blink {
@@ -617,8 +694,53 @@ if (typeof window !== 'undefined') {
 }
 
 .message-text {
-  white-space: pre-wrap;
+  white-space: normal;
   word-break: break-word;
+}
+
+.message-text :deep(.md-heading) {
+  margin: 0 0 0.85rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.message-text :deep(.md-heading-1) {
+  font-size: 1.35rem;
+}
+
+.message-text :deep(.md-heading-2) {
+  font-size: 1.18rem;
+}
+
+.message-text :deep(.md-heading-3) {
+  font-size: 1.02rem;
+}
+
+.message-text :deep(.md-heading-4) {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0.8rem 0 0.5rem;
+  color: var(--text);
+}
+
+.message-text :deep(.md-list-item) {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.38rem;
+  margin: 0.25rem 0;
+}
+
+.pending-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #0b63ff 4%, var(--surface)) 0%, var(--surface) 100%);
+}
+
+.pending-text {
+  padding-top: 0.1rem;
 }
 
 .chat-error {
@@ -765,93 +887,192 @@ if (typeof window !== 'undefined') {
   border-color: color-mix(in srgb, #f59e0b 30%, var(--border));
 }
 
-/* ---- Agent Status ---- */
-.agent-status-row {
-  max-width: 50rem;
-  width: 100%;
-  margin: 0 auto;
-}
-
-.agent-status-bubble {
+/* ---- Status ---- */
+.status-line {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 1rem;
-  background: color-mix(in srgb, #0b63ff 8%, var(--surface));
-  border: 1px solid color-mix(in srgb, #0b63ff 20%, var(--border));
-  border-radius: 0.75rem;
-  border-top-left-radius: 0.2rem;
+  min-height: 2rem;
+  padding: 0.38rem 0.7rem;
+  border-radius: 0.72rem;
+  font-size: 0.79rem;
+  line-height: 1.45;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
 }
 
-.status-spinner {
-  width: 0.85rem;
-  height: 0.85rem;
-  border: 2px solid color-mix(in srgb, #0b63ff 30%, transparent);
-  border-top-color: #0b63ff;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+.status-line-text {
+  color: var(--text);
+  opacity: 0.82;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-start {
+  border: 1px solid color-mix(in srgb, #0b63ff 16%, var(--border));
+}
+
+.status-start,
+.status-ready {
+  color: #0b63ff;
+}
+
+.status-success {
+  border: 1px solid color-mix(in srgb, #22c55e 20%, var(--border));
+  background: color-mix(in srgb, #22c55e 6%, var(--surface));
+  color: #22c55e;
+}
+
+.status-skipped,
+.status-empty {
+  border: 1px solid color-mix(in srgb, #f59e0b 22%, var(--border));
+  background: color-mix(in srgb, #f59e0b 7%, var(--surface));
+  color: #d97706;
+}
+
+.status-failed {
+  border: 1px solid color-mix(in srgb, #ef4444 20%, var(--border));
+  background: color-mix(in srgb, #ef4444 7%, var(--surface));
+  color: #ef4444;
+}
+
+.thinking-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.68rem 0.78rem;
+  border-radius: 0.82rem;
+  background: linear-gradient(135deg, rgba(11, 99, 255, 0.08), rgba(99, 102, 241, 0.06));
+  border: 1px solid color-mix(in srgb, #0b63ff 18%, var(--border));
+  text-align: left;
+  cursor: pointer;
+}
+
+.thinking-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, #0b63ff 72%, var(--text));
+}
+
+.thinking-toggle {
+  margin-left: auto;
+  font-size: 0.72rem;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.72;
+}
+
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+}
+
+.thinking-dots span {
+  width: 0.24rem;
+  height: 0.24rem;
+  border-radius: 999px;
+  background: #0b63ff;
+  animation: thinking-bounce 1.2s infinite;
+}
+
+.thinking-dots span:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.thinking-dots span:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+@keyframes thinking-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
+  40% { transform: translateY(-3px); opacity: 1; }
+}
+
+.thinking-text {
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--text) 88%, #0b63ff 12%);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.thinking-preview {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text) 88%, #0b63ff 12%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- News Card (Light/Dark Theme) ---- */
+.message-text :deep(.news-row) {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin: 0.6rem 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.message-text :deep(.news-row:hover) {
+  transform: translateX(2px);
+  opacity: 0.96;
+}
+
+.message-text :deep(.news-row-index) {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 0.4rem;
+  background: #eef2f6;
+  color: #1e3a8a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 700;
   flex-shrink: 0;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.status-label {
-  font-size: 0.84rem;
-  color: var(--text);
-  opacity: 0.8;
-}
-
-/* ---- News Card ---- */
-.message-text :deep(.news-card) {
+.message-text :deep(.news-row-body) {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  margin: 0.6rem 0;
-  padding: 0.85rem 1rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 0.6rem;
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  position: relative;
-  overflow: hidden;
+  gap: 0.25rem;
+  margin-top: 0.1rem;
 }
 
-.message-text :deep(.news-card::before) {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: #0b63ff;
-  border-radius: 0 2px 2px 0;
+.message-text :deep(.news-row-title) {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #0f172a;
+  line-height: 1.3;
 }
 
-.message-text :deep(.news-card:hover) {
-  border-color: color-mix(in srgb, #0b63ff 40%, var(--border));
-  box-shadow: 0 2px 12px rgba(11, 99, 255, 0.08);
-}
-
-.message-text :deep(.news-card-title) {
-  font-weight: 600;
-  font-size: 0.88rem;
-  color: var(--text);
-  line-height: 1.4;
-}
-
-.message-text :deep(.news-card-desc) {
-  font-size: 0.8rem;
-  color: var(--muted);
+.message-text :deep(.news-row-desc) {
+  font-size: 0.9rem;
+  color: #475569;
   line-height: 1.5;
 }
 
-.message-text :deep(.news-card-link) {
-  font-size: 0.75rem;
+.message-text :deep(.news-row-source) {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
   color: #0b63ff;
-  opacity: 0.8;
+  background: color-mix(in srgb, #0b63ff 10%, transparent);
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.25rem;
+  margin-left: 0.4rem;
+  vertical-align: middle;
 }
 
 .message-text :deep(.md-link) {
@@ -868,8 +1089,41 @@ if (typeof window !== 'undefined') {
   font-weight: 700;
 }
 
+.message-text :deep(.list-bullet) {
+  color: #0b63ff;
+  font-weight: bold;
+  margin-right: 0.5rem;
+}
+
 .message-text :deep(strong) {
   font-weight: 700;
+}
+
+/* Dark theme overrides for news cards */
+.theme-dark .message-text :deep(.news-row-index) {
+  background: #1e293b;
+  color: #93c5fd;
+}
+
+.theme-dark .message-text :deep(.news-row-title) {
+  color: #f1f5f9;
+}
+
+.theme-dark .message-text :deep(.news-row-desc) {
+  color: #94a3b8;
+}
+
+.theme-dark .message-text :deep(.news-row-source) {
+  color: #60a5fa;
+  background: color-mix(in srgb, #3b82f6 15%, transparent);
+}
+
+.theme-dark .message-text :deep(.md-heading) {
+  color: var(--text);
+}
+
+.theme-dark .message-text :deep(.md-link) {
+  color: #60a5fa;
 }
 
 /* ---- Responsive ---- */
@@ -880,6 +1134,16 @@ if (typeof window !== 'undefined') {
 
   .chat-messages {
     padding: 1rem;
+  }
+
+  .message-bubble {
+    max-width: calc(100% - 3rem);
+  }
+
+  .message-bubble.assistant {
+    width: calc(100vw - 4.5rem);
+    max-width: calc(100vw - 4.5rem);
+    flex-basis: calc(100vw - 4.5rem);
   }
 
   .chat-input-area {

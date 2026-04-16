@@ -92,10 +92,10 @@ class LlmClient {
    * Send a chat completion request with streaming.
    *
    * @param {Array<{role: string, content: string}>} messages
-   * @param {{ onChunk: (text: string) => void, timeout?: number }} options
-   * @returns {Promise<string>} full assistant reply content
+   * @param {{ onChunk?: (text: string) => void, onThinking?: (text: string) => void, timeout?: number }} options
+   * @returns {Promise<{ content: string, aborted: boolean }>} full assistant reply content
    */
-  async chatStream(messages, { onChunk, timeout: timeoutMs, signal } = {}) {
+  async chatStream(messages, { onChunk, onThinking, timeout: timeoutMs, signal } = {}) {
     if (!this.isConfigured()) {
       throw new Error('LLM 未配置。请检查 LLM_API_BASE 和 LLM_API_KEY 环境变量。');
     }
@@ -106,6 +106,7 @@ class LlmClient {
     const controller = new AbortController();
     this._activeController = controller;
     const timer = setTimeout(() => controller.abort(), timeout);
+    let fullContent = '';
 
     // Forward external abort signal
     if (signal) {
@@ -134,7 +135,6 @@ class LlmClient {
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let fullContent = '';
       let buffer = '';
 
       while (true) {
@@ -153,10 +153,23 @@ class LlmClient {
 
           try {
             const json = JSON.parse(trimmed.slice(6));
-            const delta = json?.choices?.[0]?.delta?.content;
-            if (delta) {
-              fullContent += delta;
-              if (onChunk) onChunk(delta);
+            const delta = json?.choices?.[0]?.delta || {};
+            const thinkingDelta =
+              delta.reasoning_content ||
+              delta.reasoning ||
+              delta.thinking ||
+              json?.choices?.[0]?.reasoning_content ||
+              json?.choices?.[0]?.reasoning ||
+              '';
+            const contentDelta = delta.content;
+
+            if (thinkingDelta && onThinking) {
+              onThinking(thinkingDelta);
+            }
+
+            if (contentDelta) {
+              fullContent += contentDelta;
+              if (onChunk) onChunk(contentDelta);
             }
           } catch (_e) {
             // Skip malformed JSON lines
@@ -167,11 +180,10 @@ class LlmClient {
       if (!fullContent) {
         throw new Error('LLM 返回了空回复。');
       }
-      return fullContent;
+      return { content: fullContent, aborted: false };
     } catch (err) {
       if (err.name === 'AbortError') {
-        // Return partial content if we have any (user-initiated abort)
-        return null;
+        return { content: fullContent, aborted: true };
       }
       throw err;
     } finally {
