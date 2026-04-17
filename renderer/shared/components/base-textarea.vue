@@ -30,5 +30,5 @@ defineProps({
 <style scoped>
 .field { display: flex; flex-direction: column; gap: .3rem; }
 .textarea { border: 1px solid var(--border); border-radius: .5rem; min-height: 6rem; padding: .55rem .7rem; }
-.error { color: #d92d20; font-size: .75rem; }
+.error { color: var(--error); font-size: .75rem; }
 </style>

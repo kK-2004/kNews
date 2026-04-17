@@ -174,6 +174,9 @@ onMounted(() => {
 }
 
 .permissions-table-wrap {
+  background: var(--surface-container-low);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   overflow-x: auto;
 }
 
@@ -184,16 +187,23 @@ onMounted(() => {
 
 .permissions-table th,
 .permissions-table td {
-  border-bottom: 1px solid var(--border);
-  padding: 0.7rem 0.8rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  padding: 0.8rem 1rem;
   text-align: left;
   white-space: nowrap;
 }
 
 .permissions-table th {
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 600;
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.permissions-table tr:last-child td {
+  border-bottom: none;
 }
 
 .level-badge {
@@ -203,11 +213,18 @@ onMounted(() => {
 .perm-input {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: var(--radius);
   color: var(--text);
   font-size: 0.9rem;
   padding: 0.4rem 0.6rem;
   width: 5.5rem;
+  transition: border-color 0.15s;
+}
+
+.perm-input:focus {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
 .perm-hint {
@@ -228,17 +245,17 @@ onMounted(() => {
 }
 
 .save-message.success {
-  color: #22c55e;
+  color: #2a8f55;
 }
 
 .save-message.error {
-  color: #ef4444;
+  color: var(--error);
 }
 
 .loading-spinner {
   animation: spin 0.8s linear infinite;
   border: 2px solid var(--border);
-  border-top-color: #0b63ff;
+  border-top-color: var(--primary);
   border-radius: 50%;
   display: inline-block;
   height: 16px;

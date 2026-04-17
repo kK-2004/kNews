@@ -108,7 +108,7 @@ onMounted(load)
 .loading-spinner {
   animation: spin 0.8s linear infinite;
   border: 2px solid var(--border);
-  border-top-color: #0b63ff;
+  border-top-color: var(--primary);
   border-radius: 50%;
   height: 16px;
   width: 16px;
@@ -140,17 +140,19 @@ onMounted(load)
 }
 
 .module-item {
+  background: var(--surface-container-low);
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  padding: 0.85rem;
-  transition: border-color 0.16s ease;
+  padding: 0.9rem 1rem;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .module-item:hover {
-  border-color: color-mix(in srgb, #0b63ff 30%, var(--border));
+  background: var(--surface-container);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
 }
 
 .meta {
@@ -171,13 +173,35 @@ onMounted(load)
 }
 
 :deep(.module-switch) {
-  --el-switch-on-color: #67c23a;
-  --el-switch-off-color: #f56c6c;
+  --el-switch-on-color: var(--primary);
+  --el-switch-off-color: color-mix(in srgb, var(--surface-container-highest) 92%, var(--surface));
   align-self: flex-start;
 }
 
+:deep(.module-switch .el-switch__core) {
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #ffffff 10%, transparent);
+}
+
+:deep(.module-switch.is-checked .el-switch__core) {
+  border-color: color-mix(in srgb, var(--primary) 28%, transparent);
+}
+
+:deep(.module-switch .el-switch__action) {
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+
+.theme-dark :deep(.module-switch .el-switch__core) {
+  border-color: color-mix(in srgb, #ffffff 14%, var(--border));
+}
+
+.theme-dark :deep(.module-switch .el-switch__action) {
+  background: #f5f5f5;
+}
+
 .error {
-  color: #d14343;
+  color: var(--error);
   margin: 0;
 }
 

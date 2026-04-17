@@ -1,8 +1,8 @@
 <template>
   <div class="filter-bar">
-    <base-input v-model="keyword" label="Search" placeholder="Filter feed" />
+    <base-input v-model="keyword" label="搜索" placeholder="筛选内容" />
     <base-dropdown v-model="sort" :options="sortOptions" />
-    <base-button variant="secondary" @click="emit('refresh')">Refresh</base-button>
+    <base-button variant="secondary" @click="emit('refresh')">刷新</base-button>
   </div>
 </template>
 
@@ -19,8 +19,8 @@ const keyword = ref('')
 const sort = ref('latest')
 
 const sortOptions = [
-  { label: 'Latest', value: 'latest' },
-  { label: 'Oldest', value: 'oldest' }
+  { label: '最新优先', value: 'latest' },
+  { label: '最早优先', value: 'oldest' }
 ]
 
 const emitChange = useDebounceFn(() => {

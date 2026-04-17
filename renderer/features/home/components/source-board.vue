@@ -20,10 +20,10 @@
         <small class="updated">{{ updatedLabel }}</small>
       </div>
       <div class="ops">
-        <button class="icon-btn" type="button" aria-label="Refresh source" @click.stop="$emit('refresh', source.id)">
+        <button class="icon-btn" type="button" aria-label="刷新来源" @click.stop="$emit('refresh', source.id)">
           <span class="btn-icon i-tabler-refresh" aria-hidden="true" />
         </button>
-        <button class="icon-btn" :class="{ active: followed }" type="button" aria-label="Toggle follow" @click.stop="$emit('toggle-follow', source.id)">
+        <button class="icon-btn" :class="{ active: followed }" type="button" aria-label="切换关注状态" @click.stop="$emit('toggle-follow', source.id)">
           <span v-if="followed" class="btn-icon i-tabler-star-filled" aria-hidden="true" />
           <span v-else class="btn-icon i-tabler-star" aria-hidden="true" />
         </button>
@@ -32,7 +32,11 @@
 
     <ol class="news-list">
       <li v-for="(item, idx) in items" :key="item.id || item.url || `${source.id}-${idx}`" class="news-item">
-        <span class="idx">{{ idx + 1 }}</span>
+        <div class="idx-wrap">
+          <span class="idx">{{ String(idx + 1).padStart(2, '0') }}</span>
+          <span v-if="item.extra?.diff > 0" class="idx-trend up i-tabler-arrow-up" aria-hidden="true" />
+          <span v-else-if="item.extra?.diff < 0" class="idx-trend down i-tabler-arrow-down" aria-hidden="true" />
+        </div>
         <a class="headline" :href="item.url" target="_blank" rel="noreferrer">
           <span class="title">{{ item.title }}</span>
           <span
@@ -148,20 +152,48 @@ const onDragEnd = () => {
 
 <style scoped>
 .source-board {
-  backdrop-filter: blur(8px);
+  --board-soft-bg: color-mix(in srgb, var(--board-accent) 9%, var(--surface));
+  --board-soft-border: color-mix(in srgb, var(--board-accent) 22%, var(--border));
+  --board-item-bg: color-mix(in srgb, var(--board-accent) 9%, transparent);
+  --board-item-hover-bg: color-mix(in srgb, var(--board-accent) 14%, var(--surface-container-low));
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--board-accent) 16%, var(--surface)), color-mix(in srgb, var(--board-accent) 8%, var(--surface)));
-  border: 1px solid color-mix(in srgb, var(--board-accent) 48%, var(--border));
-  border-radius: 1.1rem;
-  box-shadow:
-    0 8px 24px color-mix(in srgb, var(--board-accent) 20%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #ffffff 26%, transparent);
+    linear-gradient(180deg, color-mix(in srgb, var(--board-accent) 9%, transparent), transparent 28%),
+    var(--board-soft-bg);
+  border: 1px solid var(--board-soft-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   display: grid;
-  gap: 0.8rem;
+  gap: 0.5rem;
   height: 31rem;
   max-height: 31rem;
-  padding: 0.85rem;
+  padding: 1.25rem;
   position: relative;
+  transition: box-shadow 0.3s ease, background 0.3s ease;
+  overflow: hidden;
+}
+
+.source-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: var(--surface-container);
+  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  border-radius: 0 0 0 var(--radius);
+  color: var(--on-surface-variant);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  padding: 0.25rem 0.5rem;
+  text-transform: uppercase;
+}
+
+.source-board:hover {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--board-accent) 12%, transparent), transparent 28%),
+    color-mix(in srgb, var(--board-accent) 10%, var(--surface-container-low));
+  box-shadow: var(--shadow-md);
 }
 
 .source-board.dragging {
@@ -169,17 +201,8 @@ const onDragEnd = () => {
 }
 
 .source-board.drop-target {
-  outline: 2px dashed color-mix(in srgb, var(--board-accent) 74%, #ffffff);
+  outline: 2px dashed var(--primary);
   outline-offset: -6px;
-}
-
-.source-board::after {
-  border-radius: 1.1rem;
-  content: "";
-  inset: 0;
-  pointer-events: none;
-  position: absolute;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #ffffff 12%, transparent);
 }
 
 .board-header {
@@ -188,71 +211,83 @@ const onDragEnd = () => {
   justify-content: space-between;
 }
 
+.left {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 2.5rem;
+}
+
 .brand {
   align-items: center;
   display: flex;
-  gap: 0.45rem;
+  gap: 0.6rem;
 }
 
 .brand h3 {
-  font-size: 1.85rem;
-  line-height: 1;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.2;
   margin: 0;
 }
 
 .title-link {
-  color: inherit;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
   text-decoration: none;
-  transform: translateY(6px);
 }
 
 .icon {
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  border-radius: 999px;
+  border-radius: var(--radius);
   display: inline-block;
-  height: 2rem;
-  width: 2rem;
+  height: 2.5rem;
+  width: 2.5rem;
 }
 
 .badge {
-  background: color-mix(in srgb, var(--board-accent) 34%, var(--surface));
-  border-radius: 0.4rem;
-  font-size: 0.82rem;
-  padding: 0.12rem 0.42rem;
+  background: var(--surface-container);
+  border-radius: var(--radius);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.12rem 0.5rem;
+  color: var(--on-surface-variant);
 }
 
 .updated {
-  color: var(--muted);
-  font-size: 0.82rem;
+  color: var(--on-surface-variant);
+  font-size: 0.75rem;
+  margin-top: 0.15rem;
 }
 
 .ops {
   align-items: center;
   display: flex;
-  gap: 0.45rem;
+  gap: 0.25rem;
 }
 
 .icon-btn {
   align-items: center;
-  background: color-mix(in srgb, var(--surface) 76%, transparent);
-  border: 1px solid color-mix(in srgb, var(--board-accent) 28%, var(--border));
-  border-radius: 999px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--on-surface-variant);
   cursor: pointer;
   display: inline-flex;
   font-size: 0.9rem;
-  height: 1.8rem;
+  height: 2rem;
   justify-content: center;
-  min-height: 1.8rem;
-  transition: transform 0.14s ease, border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease, color 0.16s ease;
-  width: 1.8rem;
+  min-height: 2rem;
+  transition: background 0.15s ease, color 0.15s ease;
+  width: 2rem;
 }
 
 .icon-btn:hover {
-  background: color-mix(in srgb, var(--board-accent) 20%, var(--surface));
-  border-color: color-mix(in srgb, var(--board-accent) 60%, var(--border));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--board-accent) 16%, transparent);
+  background: var(--surface-container);
+  color: var(--primary);
 }
 
 .icon-btn:active {
@@ -260,36 +295,35 @@ const onDragEnd = () => {
 }
 
 .icon-btn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--board-accent) 75%, #ffffff);
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 
 .icon-btn.active {
-  background: color-mix(in srgb, var(--board-accent) 28%, var(--surface));
-  border-color: color-mix(in srgb, var(--board-accent) 70%, var(--border));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--board-accent) 20%, transparent);
+  background: color-mix(in srgb, var(--tertiary) 12%, transparent);
+  color: var(--tertiary);
 }
 
 .btn-icon {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   display: inline-block;
-  font-size: 0.95rem;
-  height: 0.95rem;
-  width: 0.95rem;
+  font-size: 1.1rem;
+  height: 1.1rem;
+  width: 1.1rem;
   transition: color 0.16s ease;
 }
 
 .icon-btn:hover .btn-icon {
-  color: var(--text);
+  color: var(--primary);
 }
 
 .icon-btn.active .btn-icon {
-  color: color-mix(in srgb, var(--board-accent) 85%, var(--text));
+  color: var(--tertiary);
 }
 
 .news-list {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.2rem;
   list-style: none;
   margin: 0;
   overflow: auto;
@@ -304,28 +338,46 @@ const onDragEnd = () => {
 
 .news-item {
   align-items: stretch;
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
-  border: 1px solid color-mix(in srgb, var(--board-accent) 16%, var(--border));
-  border-radius: 0.65rem;
+  background: var(--board-item-bg);
+  border-radius: 2px;
+  border: 1px solid transparent;
   display: grid;
-  gap: 0.45rem;
-  grid-template-columns: 1.65rem minmax(0, 1fr);
+  gap: 0.5rem;
+  grid-template-columns: 1.8rem minmax(0, 1fr);
   overflow: visible;
-  padding: 0.38rem 0.5rem;
+  padding: 0.4rem 0.35rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.news-item:hover {
+  background: var(--board-item-hover-bg);
+  border-color: color-mix(in srgb, var(--board-accent) 28%, transparent);
+}
+
+.idx-wrap {
+  align-items: center;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  min-width: 1.8rem;
+  padding-top: 0.1rem;
 }
 
 .idx {
-  align-self: stretch;
-  align-items: center;
-  background: color-mix(in srgb, var(--board-accent) 30%, var(--surface));
-  border-radius: 0.5rem;
-  display: flex;
   font-size: 0.78rem;
-  font-weight: 500;
-  justify-content: center;
+  font-weight: 700;
   line-height: 1.2;
-  width: 1.65rem;
+  color: var(--on-surface-variant);
 }
+
+.idx-trend {
+  font-size: 0.65rem;
+  line-height: 1;
+  margin-top: 0.1rem;
+}
+
+.idx-trend.up { color: var(--error); }
+.idx-trend.down { color: #2a8f55; }
 
 .headline {
   align-items: center;
@@ -344,14 +396,19 @@ const onDragEnd = () => {
   display: flex;
   align-items: center;
   min-height: 1.5rem;
-  font-size: 0.8rem;
-  font-weight: 400;
+  font-size: 0.82rem;
+  font-weight: 500;
   line-height: 1.4;
   overflow-wrap: anywhere;
+  transition: color 0.15s;
+}
+
+.news-item:hover .title {
+  color: var(--primary);
 }
 
 .heat {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 0.72rem;
   font-weight: 400;
   white-space: nowrap;
@@ -367,7 +424,6 @@ const onDragEnd = () => {
   display: inline-block;
   height: 1.2rem;
   margin-left: 0.08rem;
-  transform: translateY(rem);
   vertical-align: baseline;
   white-space: nowrap;
   width: auto;
@@ -377,12 +433,12 @@ const onDragEnd = () => {
 .diff.down { color: #2a8f55; }
 
 .warning {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 0.75rem;
   margin: 0;
 }
 
 .headline:hover {
-  text-decoration: underline;
+  text-decoration: none;
 }
 </style>

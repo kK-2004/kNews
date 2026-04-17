@@ -1,9 +1,9 @@
 <template>
   <section ref="containerRef" class="category-manager">
-    <h3>Categories</h3>
+    <h3>分类管理</h3>
     <VueDraggable v-model="localCategories" handle=".drag-handle" item-key="id" @end="onDrop">
       <div v-for="category in localCategories" :key="category.id" class="category-item">
-        <button class="drag-handle" type="button" aria-label="Drag category item">::</button>
+        <button class="drag-handle" type="button" aria-label="拖拽分类项">::</button>
         <span>{{ category.name }}</span>
       </div>
     </VueDraggable>

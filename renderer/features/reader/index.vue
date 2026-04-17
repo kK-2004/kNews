@@ -1,13 +1,13 @@
 <template>
   <section>
-    <h2>Reader</h2>
+    <h2>阅读器</h2>
 
     <div class="toolbar">
       <base-button size="sm" variant="secondary" @click="fontSize = Math.max(12, fontSize - 1)">A-</base-button>
       <base-button size="sm" variant="secondary" @click="fontSize = Math.min(24, fontSize + 1)">A+</base-button>
-      <base-button size="sm" variant="secondary" @click="toggleTheme">Theme: {{ ui.theme }}</base-button>
-      <base-button size="sm" @click="toggleBookmark">{{ bookmarked ? 'Unbookmark' : 'Bookmark' }}</base-button>
-      <base-button size="sm" variant="secondary" @click="shareArticle">Share</base-button>
+      <base-button size="sm" variant="secondary" @click="toggleTheme">主题：{{ themeLabel }}</base-button>
+      <base-button size="sm" @click="toggleBookmark">{{ bookmarked ? '取消收藏' : '收藏' }}</base-button>
+      <base-button size="sm" variant="secondary" @click="shareArticle">分享</base-button>
     </div>
 
     <article-view :article="article" :font-size="fontSize" :progress="progress" />
@@ -15,7 +15,7 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import BaseButton from '@/shared/components/base-button.vue'
 import { useUserActionsApi } from '@/shared/composables/useUserActionsApi'
@@ -28,14 +28,19 @@ const userApi = useUserActionsApi()
 const fontSize = ref(16)
 const progress = ref(0)
 const bookmarked = ref(false)
+const themeLabel = computed(() => {
+  if (ui.theme === 'dark') return '深色'
+  if (ui.theme === 'light') return '浅色'
+  return '跟随系统'
+})
 
 const article = ref({
   id: route.params.id,
-  title: 'Article',
+  title: '文章',
   author: 'kNews',
   created: new Date().toISOString(),
-  description: 'Reader placeholder content.',
-  content: '<p>This is the reader content placeholder.</p>'
+  description: '阅读内容占位。',
+  content: '<p>这里是阅读页内容占位。</p>'
 })
 
 const onScroll = () => {

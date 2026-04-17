@@ -148,7 +148,7 @@ onMounted(load)
 .loading-spinner {
   animation: spin 0.8s linear infinite;
   border: 2px solid var(--border);
-  border-top-color: #0b63ff;
+  border-top-color: var(--primary);
   border-radius: 50%;
   height: 16px;
   width: 16px;
@@ -172,17 +172,19 @@ onMounted(load)
 }
 
 .datasource-item {
+  background: var(--surface-container-low);
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  padding: 0.85rem;
-  transition: border-color 0.16s ease;
+  padding: 0.9rem 1rem;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .datasource-item:hover {
-  border-color: color-mix(in srgb, #0b63ff 30%, var(--border));
+  background: var(--surface-container);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
 }
 
 .meta {
@@ -203,8 +205,8 @@ onMounted(load)
 }
 
 :deep(.datasource-switch) {
-  --el-switch-on-color: #67c23a;
-  --el-switch-off-color: #f56c6c;
+  --el-switch-on-color: var(--primary);
+  --el-switch-off-color: var(--error);
   align-self: flex-start;
 }
 

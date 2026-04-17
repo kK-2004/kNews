@@ -2,28 +2,86 @@
 
 :root {
   color-scheme: light;
-  --bg: #f3f4f8;
+  --bg: #f7f7f7;
   --surface: #ffffff;
-  --text: #20242c;
-  --muted: #717985;
-  --border: #d7dce6;
+  --text: #171717;
+  --muted: #5f5f5f;
+  --border: #dddddd;
+  --primary: #111111;
+  --primary-dim: #222222;
+  --primary-container: #ececec;
+  --on-primary: #ffffff;
+  --on-primary-container: #1b1b1b;
+  --secondary: #3a3a3a;
+  --secondary-container: #efefef;
+  --tertiary: #2c2c2c;
+  --tertiary-container: #e8e8e8;
+  --error: #a83836;
+  --surface-dim: #d9d9d9;
+  --surface-container: #efefef;
+  --surface-container-low: #f6f6f6;
+  --surface-container-high: #e9e9e9;
+  --surface-container-highest: #dfdfdf;
+  --on-surface-variant: #666666;
+  --outline: #7c7c7c;
+  --outline-variant: #bdbdbd;
+  --radius: 0.25rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
 }
 
 .theme-light {
   color-scheme: light;
-  --bg: #f3f4f8;
+  --bg: #f7f7f7;
   --surface: #ffffff;
-  --text: #20242c;
-  --muted: #717985;
-  --border: #d7dce6;
+  --text: #171717;
+  --muted: #5f5f5f;
+  --border: #dddddd;
+  --primary: #111111;
+  --primary-dim: #222222;
+  --primary-container: #ececec;
+  --on-primary: #ffffff;
+  --on-primary-container: #1b1b1b;
+  --secondary: #3a3a3a;
+  --secondary-container: #efefef;
+  --tertiary: #2c2c2c;
+  --tertiary-container: #e8e8e8;
+  --surface-dim: #d9d9d9;
+  --surface-container: #efefef;
+  --surface-container-low: #f6f6f6;
+  --surface-container-high: #e9e9e9;
+  --surface-container-highest: #dfdfdf;
+  --on-surface-variant: #666666;
+  --outline: #7c7c7c;
+  --outline-variant: #bdbdbd;
 }
+
 .theme-dark {
   color-scheme: dark;
-  --bg: #0f131a;
-  --surface: #161b23;
-  --text: #f3f6fb;
-  --muted: #b4bfd0;
-  --border: #2b3546;
+  --bg: #0d0d0d;
+  --surface: #161616;
+  --text: #f5f5f5;
+  --muted: #a9a9a9;
+  --border: #303030;
+  --primary: #f5f5f5;
+  --primary-dim: #d9d9d9;
+  --primary-container: #242424;
+  --on-primary: #0d0d0d;
+  --on-primary-container: #f5f5f5;
+  --secondary: #d0d0d0;
+  --secondary-container: #202020;
+  --tertiary: #cfcfcf;
+  --tertiary-container: #262626;
+  --surface-dim: #111111;
+  --surface-container: #1b1b1b;
+  --surface-container-low: #191919;
+  --surface-container-high: #212121;
+  --surface-container-highest: #2a2a2a;
+  --on-surface-variant: #a9a9a9;
+  --outline: #808080;
+  --outline-variant: #4b4b4b;
 }
 
 
@@ -32,13 +90,12 @@
 }
 
 body {
-  background:
-    radial-gradient(70rem 40rem at 10% -20%, color-mix(in srgb, #f28f8f 16%, transparent), transparent 70%),
-    radial-gradient(70rem 40rem at 90% -10%, color-mix(in srgb, #6d89ff 14%, transparent), transparent 70%),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-family: "Inter", "IBM Plex Sans", "Segoe UI", sans-serif;
   margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
@@ -47,7 +104,7 @@ a {
 }
 
 a.router-link-active {
-  color: #0b63ff;
+  color: var(--primary);
   font-weight: 600;
 }
 
@@ -75,10 +132,9 @@ textarea:focus {
   box-shadow: none;
 }
 
-/* 滚动条样式 */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -86,16 +142,15 @@ textarea:focus {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted) 30%, transparent);
+  background: var(--outline-variant);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--muted) 50%, transparent);
+  background: var(--outline);
 }
 
-/* Firefox 滚动条样式 */
 * {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--muted) 30%, transparent) transparent;
+  scrollbar-color: var(--outline-variant) transparent;
 }

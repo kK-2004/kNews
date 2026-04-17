@@ -17,31 +17,37 @@ const { isAdmin } = useAdminMode()
 
 <style scoped>
 .settings-nav {
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  border: 1px solid color-mix(in srgb, #0b63ff 20%, var(--border));
-  border-radius: 999px;
+  background: var(--surface-container-low);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.25rem;
   margin-bottom: 0.2rem;
   padding: 0.3rem;
 }
 
 .settings-nav a {
   align-items: center;
-  color: var(--muted);
+  color: var(--on-surface-variant);
   display: inline-flex;
   font-size: 0.88rem;
   font-weight: 600;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: var(--radius);
   min-height: 2rem;
   padding: 0.2rem 0.8rem;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
+.settings-nav a:hover {
+  background: var(--surface-container-high);
+  color: var(--text);
+}
+
 .settings-nav a.router-link-active {
-  background: color-mix(in srgb, #0b63ff 16%, transparent);
-  color: #0b63ff;
+  background: var(--surface-container-highest);
+  color: var(--primary);
+  box-shadow: var(--shadow-sm);
 }
 </style>

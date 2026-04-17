@@ -1,6 +1,6 @@
 <template>
   <section>
-    <h2>Category {{ id }}</h2>
+    <h2>分类 {{ id }}</h2>
   </section>
 </template>
 

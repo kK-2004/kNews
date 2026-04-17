@@ -553,13 +553,12 @@ onMounted(load)
 
 /* Panel */
 .panel {
-  background: var(--surface);
+  background: var(--surface-container-low);
   border: 1px solid var(--border);
-  border-radius: 0.9rem;
+  border-radius: var(--radius-lg);
   display: grid;
   gap: 0.85rem;
-  padding: 1rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 1.1rem;
 }
 
 .panel h4 {
@@ -602,8 +601,8 @@ onMounted(load)
 }
 
 .count-badge {
-  background: color-mix(in srgb, #0b63ff 12%, transparent);
-  color: #0b63ff;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
   font-size: 0.75rem;
   font-weight: 600;
   padding: 0.1rem 0.5rem;
@@ -617,12 +616,12 @@ onMounted(load)
 }
 
 .entitlement-item {
-  background: color-mix(in srgb, var(--surface) 88%, #edf4ff);
-  border: 1px solid color-mix(in srgb, var(--border) 82%, #c6d8ff);
-  border-radius: 0.8rem;
+  background: var(--surface-container-high);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   display: grid;
   gap: 0.2rem;
-  padding: 0.85rem 0.9rem;
+  padding: 0.9rem 1rem;
 }
 
 .key-list {
@@ -632,16 +631,17 @@ onMounted(load)
 
 .key-item {
   align-items: center;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 0.7rem;
+  border-radius: var(--radius-lg);
   display: flex;
   gap: 0.75rem;
-  padding: 0.75rem 0.85rem;
-  background: var(--surface);
-  transition: border-color 0.16s ease;
+  padding: 0.8rem 1rem;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .key-item:hover {
+  background: var(--surface-container);
   border-color: color-mix(in srgb, var(--muted) 40%, var(--border));
 }
 
@@ -671,8 +671,8 @@ onMounted(load)
   font-weight: 600;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
-  background: color-mix(in srgb, #0b63ff 12%, transparent);
-  color: #0b63ff;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
 }
 
 .key-chips {
@@ -691,8 +691,8 @@ onMounted(load)
 }
 
 .source-tag.all {
-  background: color-mix(in srgb, #0b63ff 10%, transparent);
-  color: #0b63ff;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
 }
 
 .key-pill {
@@ -710,11 +710,11 @@ onMounted(load)
 }
 
 .key-pill:hover {
-  color: #0b63ff;
+  color: var(--primary);
 }
 
 .key-pill:hover .key-copy {
-  color: #0b63ff;
+  color: var(--primary);
 }
 
 .key-value {
@@ -769,8 +769,8 @@ onMounted(load)
 }
 
 .action-btn:hover {
-  background: color-mix(in srgb, #0b63ff 10%, transparent);
-  color: #0b63ff;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
 }
 
 .delete-btn {
@@ -788,8 +788,8 @@ onMounted(load)
 }
 
 .delete-btn:hover {
-  background: color-mix(in srgb, #e53e3e 10%, transparent);
-  color: #e53e3e;
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+  color: var(--error);
 }
 
 /* Create Key Modal */
@@ -825,18 +825,19 @@ onMounted(load)
 
 .count-field input {
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: var(--radius);
   min-height: 2.25rem;
   padding: 0.45rem 0.65rem;
   outline: none;
   background: var(--surface);
   color: var(--text);
+  transition: border-color 0.15s;
 }
 
 .count-field input:focus {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, #0b63ff 30%, transparent);
-  border-color: #0b63ff;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent);
+  border-color: var(--primary);
 }
 
 .source-section {
@@ -875,8 +876,8 @@ onMounted(load)
 }
 
 .source-actions button:hover {
-  border-color: #0b63ff;
-  color: #0b63ff;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .source-grid {
@@ -904,7 +905,7 @@ onMounted(load)
 .source-chip {
   align-items: center;
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: var(--radius);
   cursor: pointer;
   display: inline-flex;
   gap: 0.35rem;
@@ -912,18 +913,18 @@ onMounted(load)
   padding: 0 0.5rem;
   background: var(--surface);
   color: var(--text);
-  transition: all 0.16s ease;
+  transition: all 0.15s;
   font-size: 0.82rem;
 }
 
 .source-chip:hover {
-  border-color: color-mix(in srgb, #0b63ff 50%, var(--border));
+  border-color: color-mix(in srgb, var(--primary) 50%, var(--border));
 }
 
 .source-chip.active {
-  background: color-mix(in srgb, #0b63ff 12%, transparent);
-  border-color: #0b63ff;
-  color: #0b63ff;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .source-chip input {
@@ -959,7 +960,7 @@ onMounted(load)
   align-items: stretch;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-lg);
   display: flex;
   gap: 0;
   overflow: hidden;
@@ -1020,7 +1021,7 @@ onMounted(load)
 .loading-spinner {
   animation: spin 0.8s linear infinite;
   border: 2px solid var(--border);
-  border-top-color: #0b63ff;
+  border-top-color: var(--primary);
   border-radius: 50%;
   height: 16px;
   width: 16px;

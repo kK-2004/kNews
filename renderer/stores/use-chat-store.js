@@ -33,6 +33,19 @@ export const useChatStore = defineStore('use-chat-store', {
     },
   },
   actions: {
+    normalizeAssistantContent(content) {
+      return typeof content === 'string' ? content.replace(/\s+$/u, '') : ''
+    },
+
+    notifySingleSessionLimit() {
+      const { error: toastError } = useToast()
+      toastError('为了减缓llm请求压力，每个客户端仅支持同时一个会话。', { timeout: 4000 })
+    },
+
+    hasActiveGlobalStream() {
+      return Boolean(this.sending || this.activeStreamSessionId)
+    },
+
     updateTopicSummary(topicId, summary, summaryStatus = 'ready') {
       const applySummary = (topics) => {
         if (!topics?.sections) return false
@@ -75,6 +88,11 @@ export const useChatStore = defineStore('use-chat-store', {
     },
 
     async selectSession(sessionId) {
+      if (this.hasActiveGlobalStream() && sessionId !== this.activeStreamSessionId) {
+        this.notifySingleSessionLimit()
+        return
+      }
+
       this.currentSessionId = sessionId
       this.error = null
       this.statusEvents = []
@@ -98,6 +116,11 @@ export const useChatStore = defineStore('use-chat-store', {
     },
 
     async createSession() {
+      if (this.hasActiveGlobalStream()) {
+        this.notifySingleSessionLimit()
+        return null
+      }
+
       const result = await window.api.chat.createSession()
       if (result?.error) {
         this.error = result.error
@@ -124,6 +147,11 @@ export const useChatStore = defineStore('use-chat-store', {
     },
 
     async sendMessage(content, { isHotTopic = false } = {}) {
+      if (this.hasActiveGlobalStream()) {
+        this.notifySingleSessionLimit()
+        return
+      }
+
       if (!this.currentSessionId) {
         await this.createSession()
         if (!this.currentSessionId) return
@@ -213,12 +241,14 @@ export const useChatStore = defineStore('use-chat-store', {
                   const finalAssistantMessage = assistantMessage
                     ? {
                         ...assistantMessage,
-                        content: aborted ? `${assistantMessage.content}\n\n_[已中断]_` : assistantMessage.content,
+                        content: aborted
+                          ? `${this.normalizeAssistantContent(assistantMessage.content)}\n\n_[已中断]_`
+                          : this.normalizeAssistantContent(assistantMessage.content),
                       }
                     : (aborted && this.streamingContent
                       ? {
                           role: 'assistant',
-                          content: `${this.streamingContent}\n\n_[已中断]_`,
+                          content: `${this.normalizeAssistantContent(this.streamingContent)}\n\n_[已中断]_`,
                           timestamp: new Date().toISOString(),
                           hotTopics: this.pendingHotTopics,
                         }
@@ -291,6 +321,11 @@ export const useChatStore = defineStore('use-chat-store', {
     },
 
     async deleteSession(sessionId) {
+      if (this.hasActiveGlobalStream()) {
+        this.notifySingleSessionLimit()
+        return
+      }
+
       const result = await window.api.chat.deleteSession(sessionId)
       if (result?.error) {
         this.error = result.error

@@ -1,6 +1,6 @@
 <template>
   <section>
-    <h2>Sources</h2>
+    <h2>来源管理</h2>
 
     <source-form :initial-value="editing" @submit="save" @cancel="resetForm" />
 

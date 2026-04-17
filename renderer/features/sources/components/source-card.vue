@@ -3,7 +3,7 @@
     <template #header>
       <div class="head">
         <strong>{{ source.name }}</strong>
-        <button class="drag-handle" type="button" aria-label="Drag source card">::</button>
+        <button class="drag-handle" type="button" aria-label="拖拽来源卡片">::</button>
       </div>
     </template>
 
@@ -11,8 +11,8 @@
 
     <template #footer>
       <div class="actions">
-        <base-button size="sm" variant="secondary" @click="$emit('edit', source)">Edit</base-button>
-        <base-button size="sm" variant="danger" @click="$emit('delete', source.id)">Delete</base-button>
+        <base-button size="sm" variant="secondary" @click="$emit('edit', source)">编辑</base-button>
+        <base-button size="sm" variant="danger" @click="$emit('delete', source.id)">删除</base-button>
       </div>
     </template>
   </base-card>

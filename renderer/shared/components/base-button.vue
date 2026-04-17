@@ -38,9 +38,9 @@ defineProps({
 .size-sm { font-size: 0.75rem; padding: 0.35rem 0.65rem; }
 .size-md { font-size: 0.875rem; padding: 0.55rem 0.85rem; }
 .size-lg { font-size: 1rem; padding: 0.7rem 1.1rem; }
-.variant-primary { background: #0b63ff; border-color: #0b63ff; color: #fff; }
+.variant-primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .variant-secondary { background: var(--surface); color: var(--text); }
-.variant-danger { background: #d92d20; border-color: #d92d20; color: #fff; }
+.variant-danger { background: var(--error); border-color: var(--error); color: var(--on-primary); }
 .base-button:disabled { cursor: not-allowed; opacity: 0.6; }
 .base-button:focus { outline: none; box-shadow: none; }
 

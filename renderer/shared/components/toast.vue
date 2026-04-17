@@ -10,7 +10,7 @@
 
       <div class="actions">
         <button v-if="toast.action" class="action-btn" type="button" @click="runAction">{{ toast.action.label }}</button>
-        <button class="dismiss-btn i-tabler-x" type="button" aria-label="Dismiss" @click="$emit('dismiss', toast.id)" />
+        <button class="dismiss-btn i-tabler-x" type="button" aria-label="关闭提示" @click="$emit('dismiss', toast.id)" />
       </div>
     </div>
   </article>

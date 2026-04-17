@@ -60,11 +60,11 @@ const { id } = props
 }
 .input:focus {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, #0b63ff 30%, transparent);
-  border-color: #0b63ff;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent);
+  border-color: var(--primary);
 }
 .input::placeholder {
   color: var(--muted);
 }
-.error { color: #d92d20; font-size: 0.75rem; }
+.error { color: var(--error); font-size: 0.75rem; }
 </style>

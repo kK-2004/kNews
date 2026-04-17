@@ -15,7 +15,7 @@ export const routes = [
     path: '/',
     name: 'home',
     component: () => import('@/features/home/index.vue'),
-    meta: { title: 'Home', prefetch: true }
+    meta: { title: '首页', prefetch: true }
   },
   {
     path: '/sources',
@@ -34,7 +34,7 @@ export const routes = [
     name: 'reader-detail',
     component: () => import('@/features/reader/index.vue'),
     props: true,
-    meta: { title: 'Reader' }
+    meta: { title: '阅读器' }
   },
   {
     path: '/subscribe',
@@ -97,7 +97,7 @@ export const routes = [
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/features/not-found/index.vue'),
-    meta: { title: 'Not Found' }
+    meta: { title: '页面不存在' }
   }
 ]
 
