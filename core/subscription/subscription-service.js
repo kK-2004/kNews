@@ -143,22 +143,23 @@ class SubscriptionService {
     const permissions = LEVEL_PERMISSIONS[level];
     if (!permissions) return;
 
-    try {
-      const keys = await this.apiKeyRepo.findActiveByUserId(userId);
-      const supabase = this.apiKeyRepo.supabase;
+    const keys = await this.apiKeyRepo.findActiveByUserId(userId);
+    const supabase = this.apiKeyRepo.supabase;
+    const now = new Date().toISOString();
 
-      for (const key of keys) {
-        await supabase
-          .from('api_key')
-          .update({
-            rate_limit: permissions.rate_limit,
-            max_count: permissions.max_count,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', key.id);
+    for (const key of keys) {
+      const { error } = await supabase
+        .from('api_key')
+        .update({
+          rate_limit: permissions.rate_limit,
+          max_count: permissions.max_count,
+          updated_at: now,
+        })
+        .eq('id', key.id);
+
+      if (error) {
+        throw new Error(`Failed to sync API key ${key.id}: ${error.message}`);
       }
-    } catch (err) {
-      console.error('[SubscriptionService] Failed to sync API key permissions:', err.message);
     }
   }
 }

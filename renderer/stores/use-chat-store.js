@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { useToast } from '@/shared/composables/useToast'
 
 export const useChatStore = defineStore('use-chat-store', {
   state: () => ({
@@ -6,16 +7,21 @@ export const useChatStore = defineStore('use-chat-store', {
     currentSessionId: null,
     messages: [],
     sending: false,
+    activeStreamSessionId: null,
     error: null,
     statusEvents: [],
     streamingContent: null,
+    pendingHotTopics: null,
     streamingThinking: '',
     thinkingExpanded: false,
     pendingAbort: false,
+    summaryToastShown: false,
   }),
   getters: {
     currentSession: (state) =>
       state.sessions.find((s) => s.id === state.currentSessionId) || null,
+    isCurrentSessionStreaming: (state) =>
+      Boolean(state.sending && state.activeStreamSessionId && state.activeStreamSessionId === state.currentSessionId),
     latestStatusEvent: (state) =>
       state.statusEvents.length > 0 ? state.statusEvents[state.statusEvents.length - 1] : null,
     latestThinkingLine: (state) => {
@@ -27,6 +33,28 @@ export const useChatStore = defineStore('use-chat-store', {
     },
   },
   actions: {
+    updateTopicSummary(topicId, summary, summaryStatus = 'ready') {
+      const applySummary = (topics) => {
+        if (!topics?.sections) return false
+        for (const section of topics.sections) {
+          for (const item of section.items || []) {
+            if ((item.topicId || item.id) === topicId) {
+              item.summary = summary || ''
+              item.summaryStatus = summaryStatus
+              return true
+            }
+          }
+        }
+        return false
+      }
+
+      if (applySummary(this.pendingHotTopics)) return
+
+      for (const message of this.messages) {
+        if (applySummary(message.hotTopics)) return
+      }
+    },
+
     async loadSessions() {
       const result = await window.api.chat.listSessions()
       if (result?.error) {
@@ -51,9 +79,11 @@ export const useChatStore = defineStore('use-chat-store', {
       this.error = null
       this.statusEvents = []
       this.streamingContent = null
+      this.pendingHotTopics = null
       this.streamingThinking = ''
       this.thinkingExpanded = false
       this.pendingAbort = false
+      this.summaryToastShown = false
       if (!sessionId) {
         this.messages = []
         return
@@ -85,9 +115,11 @@ export const useChatStore = defineStore('use-chat-store', {
       this.error = null
       this.statusEvents = []
       this.streamingContent = null
+      this.pendingHotTopics = null
       this.streamingThinking = ''
       this.thinkingExpanded = false
       this.pendingAbort = false
+      this.summaryToastShown = false
       return session
     },
 
@@ -98,12 +130,15 @@ export const useChatStore = defineStore('use-chat-store', {
       }
 
       this.sending = true
+      this.activeStreamSessionId = this.currentSessionId
       this.error = null
       this.statusEvents = []
       this.streamingContent = null
+      this.pendingHotTopics = null
       this.streamingThinking = ''
       this.thinkingExpanded = false
       this.pendingAbort = false
+      this.summaryToastShown = false
 
       // Optimistic: show user message immediately
       const optimisticMsg = {
@@ -114,7 +149,8 @@ export const useChatStore = defineStore('use-chat-store', {
       this.messages.push(optimisticMsg)
 
       // Update session title optimistically
-      const session = this.sessions.find((s) => s.id === this.currentSessionId)
+      const streamSessionId = this.currentSessionId
+      const session = this.sessions.find((s) => s.id === streamSessionId)
       if (session && !session.title) {
         session.title = content.length > 20 ? content.slice(0, 20) + '…' : content
       }
@@ -122,53 +158,92 @@ export const useChatStore = defineStore('use-chat-store', {
       try {
         await new Promise((resolve, reject) => {
           window.api.chat.sendMessageStream(
-            this.currentSessionId,
+            streamSessionId,
             content,
             isHotTopic,
             {
               onStatus: (event) => {
+                if (this.currentSessionId !== streamSessionId) return
                 this.statusEvents.push({
                   id: `${Date.now()}-${this.statusEvents.length}`,
                   status: event?.status || 'info',
                   sourceId: event?.sourceId || '',
                   sourceName: event?.sourceName || '',
                   detail: event?.detail || event?.text || '',
+                  topics: event?.topics || null,
                 })
+                if (event?.topics) this.pendingHotTopics = event.topics
               },
               onThinking: (text) => {
+                if (this.currentSessionId !== streamSessionId) return
                 this.streamingThinking += text
               },
               onToken: (text) => {
+                if (this.currentSessionId !== streamSessionId) return
                 if (this.streamingContent === null) this.streamingContent = ''
                 this.streamingContent += text
               },
+              onTopicSummary: (event) => {
+                if (this.currentSessionId !== streamSessionId) return
+                this.updateTopicSummary(event?.topicId, event?.summary || '', event?.summaryStatus || 'ready')
+                if (event?.summaryStatus === 'error' && !this.summaryToastShown) {
+                  const { warning, error: toastError } = useToast()
+                  const message = event?.summaryError || '热点摘要生成失败'
+                  if (message.includes('429') || message.includes('速率限制') || message.includes('请求频率')) {
+                    warning('热点摘要请求过快，部分新闻暂未生成一句话描述。', { timeout: 5000 })
+                  } else {
+                    toastError(`热点摘要生成失败：${message}`, { timeout: 5000 })
+                  }
+                  this.summaryToastShown = true
+                }
+              },
               onDone: (userMessage, assistantMessage, aborted) => {
-                // Replace optimistic user msg with server version + add assistant
-                this.messages.pop()
-                this.messages.push(userMessage)
+                if (this.currentSessionId === streamSessionId) {
+                  const lastMessage = this.messages[this.messages.length - 1]
+                  if (
+                    lastMessage?.role === optimisticMsg.role &&
+                    lastMessage?.content === optimisticMsg.content &&
+                    lastMessage?.timestamp === optimisticMsg.timestamp
+                  ) {
+                    this.messages.pop()
+                  }
 
-                const finalAssistantMessage = assistantMessage
-                  ? {
-                      ...assistantMessage,
-                      content: aborted ? `${assistantMessage.content}\n\n_[已中断]_` : assistantMessage.content,
-                    }
-                  : (aborted && this.streamingContent
+                  this.messages.push(userMessage)
+
+                  const finalAssistantMessage = assistantMessage
                     ? {
-                        role: 'assistant',
-                        content: `${this.streamingContent}\n\n_[已中断]_`,
-                        timestamp: new Date().toISOString(),
+                        ...assistantMessage,
+                        content: aborted ? `${assistantMessage.content}\n\n_[已中断]_` : assistantMessage.content,
                       }
-                    : null)
+                    : (aborted && this.streamingContent
+                      ? {
+                          role: 'assistant',
+                          content: `${this.streamingContent}\n\n_[已中断]_`,
+                          timestamp: new Date().toISOString(),
+                          hotTopics: this.pendingHotTopics,
+                        }
+                      : (this.pendingHotTopics
+                        ? {
+                            role: 'assistant',
+                            content: aborted ? '_[已中断]_' : '',
+                            timestamp: new Date().toISOString(),
+                            hotTopics: this.pendingHotTopics,
+                          }
+                        : null))
 
-                if (finalAssistantMessage) {
-                  this.messages.push(finalAssistantMessage)
+                  if (finalAssistantMessage) {
+                    this.messages.push(finalAssistantMessage)
+                  }
+
+                  this.streamingContent = null
+                  this.pendingHotTopics = null
+                  this.streamingThinking = ''
+                  this.thinkingExpanded = false
+                  this.statusEvents = []
                 }
 
-                this.streamingContent = null
-                this.streamingThinking = ''
-                this.thinkingExpanded = false
-                this.statusEvents = []
                 this.pendingAbort = false
+                this.summaryToastShown = false
 
                 // Update session in list
                 if (session) {
@@ -183,11 +258,15 @@ export const useChatStore = defineStore('use-chat-store', {
               },
               onError: (error) => {
                 this.error = error
-                this.streamingContent = null
-                this.streamingThinking = ''
-                this.thinkingExpanded = false
-                this.statusEvents = []
+                if (this.currentSessionId === streamSessionId) {
+                  this.streamingContent = null
+                  this.pendingHotTopics = null
+                  this.streamingThinking = ''
+                  this.thinkingExpanded = false
+                  this.statusEvents = []
+                }
                 this.pendingAbort = false
+                this.summaryToastShown = false
                 reject(new Error(error))
               },
             },
@@ -197,6 +276,7 @@ export const useChatStore = defineStore('use-chat-store', {
         // Error already set in onError callback
       } finally {
         this.sending = false
+        this.activeStreamSessionId = null
       }
     },
 

@@ -53,7 +53,7 @@
     <div class="hourly-section">
       <h4>每小时调用趋势</h4>
       <div v-if="hourlySeries.length === 0" class="empty-state">
-        <p>暂无数据</p>
+        <p>暂无小时级日志，当前调用次数已在下方 Key 列表和榜单中展示</p>
       </div>
       <div v-else class="line-chart-card">
         <div class="chart-hint">
@@ -67,7 +67,11 @@
     </div>
 
     <div v-if="leaderboard.length > 0" class="leaderboard-section">
-      <h4>每小时调用榜单（{{ formattedLeaderboardHour || '-' }}）</h4>
+      <h4>调用榜单</h4>
+      <p class="leaderboard-hint">
+        按累计调用次数排序
+        <span v-if="formattedLeaderboardHour">，更新时间 {{ formattedLeaderboardHour }}</span>
+      </p>
       <div class="leaderboard-list">
         <div v-for="(item, index) in leaderboard" :key="item.id" class="leaderboard-item">
           <span :class="['rank-badge', index < 3 ? 'top' : '']">{{ index + 1 }}</span>
@@ -99,7 +103,7 @@
             <p class="key-user">用户：{{ key.username || '未知' }}</p>
             <p class="key-code key-code-muted">API Key 明文仅在创建时显示一次</p>
             <div class="key-stats">
-              <span class="key-stat">限流: {{ key.rateLimitRph || '-' }}/h</span>
+              <span class="key-stat">限流: {{ formatRateLimit(key.rateLimitRph) }}</span>
               <span class="key-stat">最后: {{ formatLastCall(key.lastCallTime) }}</span>
             </div>
           </div>
@@ -110,6 +114,25 @@
         </div>
       </div>
     </div>
+
+    <base-modal :open="showRateLimitModal" @close="closeRateLimitModal">
+      <template #title>
+        <h3 class="modal-title">设置限流</h3>
+      </template>
+      <div class="rate-limit-modal">
+        <p class="rate-limit-desc">
+          为 <strong>{{ editingKey?.name || '未命名 Key' }}</strong> 设置每小时请求上限。
+        </p>
+        <label class="rate-limit-field">
+          <span>请求/小时</span>
+          <input v-model.number="editingRateLimit" type="number" min="1" step="1">
+        </label>
+        <div class="modal-actions">
+          <base-button variant="secondary" @click="closeRateLimitModal">取消</base-button>
+          <base-button @click="saveRateLimit">保存</base-button>
+        </div>
+      </div>
+    </base-modal>
   </section>
 </template>
 
@@ -117,6 +140,7 @@
 import * as echarts from 'echarts'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import BaseButton from '@/shared/components/base-button.vue'
+import BaseModal from '@/shared/components/base-modal.vue'
 import { useAdminMode } from '@/shared/composables/useAdminMode'
 import { useAdminApi } from '@/shared/composables/useAdminApi'
 
@@ -136,6 +160,9 @@ const leaderboard = ref([])
 const leaderboardHour = ref('')
 const chartEl = ref(null)
 let usageChart = null
+const showRateLimitModal = ref(false)
+const editingKey = ref(null)
+const editingRateLimit = ref(100)
 
 const filteredApiKeys = computed(() => {
   if (!selectedKey.value) return apikeys.value
@@ -143,7 +170,7 @@ const filteredApiKeys = computed(() => {
 })
 
 const totalCalls = computed(() => {
-  return hourlySeries.value.reduce((sum, item) => sum + (item.calls || 0), 0)
+  return apikeys.value.reduce((sum, item) => sum + Number(item.callCount || item.call_count || 0), 0)
 })
 
 const activeKeys = computed(() => {
@@ -315,6 +342,12 @@ const formatLastCall = (value) => {
   return date.toLocaleDateString('zh-CN')
 }
 
+const formatRateLimit = (value) => {
+  const rate = Number(value)
+  if (!Number.isFinite(rate) || rate < 0) return '不限'
+  return `${rate}/h`
+}
+
 const deleteAPIKey = async (key) => {
   if (!confirm(`确定要删除 API Key "${key.name || '未命名'}" 吗？`)) {
     return
@@ -332,15 +365,25 @@ const deleteAPIKey = async (key) => {
 }
 
 const editRateLimit = async (key) => {
-  const currentLimit = key.rateLimitRph || 100
-  const input = prompt(`设置限流（请求/小时）：\n当前：${currentLimit}`, String(currentLimit))
+  editingKey.value = key
+  editingRateLimit.value = Math.max(1, Number(key.rateLimitRph || 100))
+  showRateLimitModal.value = true
+}
 
-  if (input === null) return
+const closeRateLimitModal = () => {
+  showRateLimitModal.value = false
+  editingKey.value = null
+  editingRateLimit.value = 100
+}
 
-  const newLimit = Math.max(1, Number(input) || 100)
+const saveRateLimit = async () => {
+  if (!editingKey.value) return
+  const newLimit = Math.max(1, Number(editingRateLimit.value) || 100)
   try {
-    await adminApi.updateApiKeyRateLimit(key.id, newLimit)
-    key.rateLimitRph = newLimit
+    await adminApi.updateApiKeyRateLimit(editingKey.value.id, newLimit)
+    editingKey.value.rateLimitRph = newLimit
+    closeRateLimitModal()
+    await loadApiKeys()
   } catch (err) {
     console.error('更新限流失败:', err)
     alert('更新失败，请稍后重试')
@@ -511,6 +554,12 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
+.leaderboard-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: -0.2rem 0 0;
+}
+
 .leaderboard-list {
   display: grid;
   gap: 0.5rem;
@@ -643,6 +692,47 @@ onBeforeUnmount(() => {
 .key-actions {
   display: flex;
   gap: 0.4rem;
+}
+
+.modal-title {
+  margin: 0;
+}
+
+.rate-limit-modal {
+  display: grid;
+  gap: 0.9rem;
+  min-width: min(28rem, 80vw);
+}
+
+.rate-limit-desc {
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.rate-limit-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.rate-limit-field span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.rate-limit-field input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  color: var(--text);
+  font-size: 0.95rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
 }
 
 @media (max-width: 768px) {

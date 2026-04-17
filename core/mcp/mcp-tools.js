@@ -26,6 +26,10 @@ function clampMaxCount(value, fallback = 12) {
   return Math.min(30, Math.max(1, Number(value) || fallback));
 }
 
+function buildTopicId(sourceId, index, title, url) {
+  return `${sourceId || 'unknown'}:${index}:${String(title || '').trim()}:${String(url || '').trim()}`;
+}
+
 function createMcpSdkServer({ sourceService, feedService, apiKey }) {
   const server = new McpServer(
     {
@@ -50,6 +54,13 @@ function createMcpSdkServer({ sourceService, feedService, apiKey }) {
       const lines = filteredSources.map((item) => `${item.id}: ${item.name}`);
 
       return {
+        structuredContent: {
+          maxCount,
+          sources: filteredSources.map((item) => ({
+            id: item.id,
+            name: item.name,
+          })),
+        },
         content: [
           {
             type: 'text',
@@ -81,12 +92,16 @@ function createMcpSdkServer({ sourceService, feedService, apiKey }) {
       const keyMaxCount = clampMaxCount(apiKey?.max_count, 12);
       const limit = Math.min(requestedLimit, keyMaxCount);
       const data = await feedService.getFeedsBySource(id);
+      const sources = await sourceService.getSources();
+      const sourceName = sources.find((item) => item.id === id)?.name || id;
       const items = (Array.isArray(data) ? data : [])
-        .map((item) => ({
+        .map((item, index) => ({
+          id: buildTopicId(id, index, item.title, item.url),
           title: item.title || 'Untitled',
           url: item.url || '',
-          date: item.date || null,
-          source_id: item.source || id,
+          publishedAt: item.date || '',
+          sourceId: item.source || id,
+          sourceName,
         }))
         .filter((item) => item.url)
         .slice(0, limit);
@@ -98,10 +113,15 @@ function createMcpSdkServer({ sourceService, feedService, apiKey }) {
       }
 
       const text = items
-        .map((item) => `- [${item.title}](${item.url})${item.date ? ` (${item.date})` : ''}`)
+        .map((item) => `- [${item.title}](${item.url})${item.publishedAt ? ` (${item.publishedAt})` : ''}`)
         .join('\n');
 
       return {
+        structuredContent: {
+          sourceId: id,
+          sourceName,
+          items,
+        },
         content: [{ type: 'text', text }],
       };
     },

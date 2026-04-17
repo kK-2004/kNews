@@ -93,7 +93,7 @@ contextBridge.exposeInMainWorld("api", {
       ipcRenderer.invoke("chat:sendMessage", { sessionId, content, isHotTopic }),
     deleteSession: (sessionId) => ipcRenderer.invoke("chat:deleteSession", sessionId),
     sendMessageStream: (sessionId, content, isHotTopic, callbacks) => {
-      const { onStatus, onThinking, onToken, onDone, onError } = callbacks;
+      const { onStatus, onThinking, onToken, onTopicSummary, onDone, onError } = callbacks;
       const handler = (_event, streamEvent) => {
         switch (streamEvent.type) {
           case "status":
@@ -104,6 +104,9 @@ contextBridge.exposeInMainWorld("api", {
             break;
           case "token":
             if (onToken) onToken(streamEvent.text);
+            break;
+          case "topic-summary":
+            if (onTopicSummary) onTopicSummary(streamEvent);
             break;
           case "done":
             ipcRenderer.removeListener("chat:streamEvent", handler);

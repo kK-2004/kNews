@@ -42,6 +42,25 @@ class PreferenceRepository {
     return null;
   }
 
+  _isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  _mergeDeep(base, patch) {
+    if (!this._isPlainObject(base)) return this._isPlainObject(patch) ? { ...patch } : patch;
+    if (!this._isPlainObject(patch)) return patch;
+
+    const result = { ...base };
+    for (const [key, value] of Object.entries(patch)) {
+      if (this._isPlainObject(value) && this._isPlainObject(result[key])) {
+        result[key] = this._mergeDeep(result[key], value);
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  }
+
   /**
    * Upsert preferences for a user.
    * Writes to database first, then invalidates local cache.
@@ -51,13 +70,15 @@ class PreferenceRepository {
    */
   async upsert(userId, data) {
     const rowId = `user:${userId}`;
+    const existing = await this.findByUserId(userId);
+    const nextData = this._mergeDeep(existing || {}, data || {});
 
     const { error } = await this.supabase
       .from('preference')
       .upsert({
         id: rowId,
         user_id: userId,
-        data,
+        data: nextData,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' });
 

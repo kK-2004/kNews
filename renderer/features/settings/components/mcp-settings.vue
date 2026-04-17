@@ -21,6 +21,47 @@
     </div>
 
     <template v-else-if="isLoggedIn">
+      <div class="panel entitlements">
+        <div class="list-header">
+          <h4>当前 API 权益</h4>
+          <span class="count-badge">{{ currentLevelLabel }}</span>
+        </div>
+        <p class="hint">当前账号等级对应的 MCP 默认权限上限：</p>
+        <div class="entitlement-grid">
+          <div class="entitlement-item">
+            <span class="label">调用频率</span>
+            <strong class="value">{{ currentEntitlements.rateLimitLabel }}</strong>
+          </div>
+          <div class="entitlement-item">
+            <span class="label">单次返回条数</span>
+            <strong class="value">{{ currentEntitlements.maxCountLabel }}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel assistant-settings">
+        <div class="list-header">
+          <h4>AI 热点设置</h4>
+        </div>
+        <p class="hint">控制 K-Ai 拉取热点时每个数据源请求的新闻条数。保存时会先写数据库，再删除本地缓存；应用下次启动会优先读本地缓存，无缓存时回源数据库并重建缓存。</p>
+        <div class="assistant-settings-row">
+          <label class="count-field inline">
+            <span>每源条数</span>
+            <input
+              v-model.number="assistantPerSourceCount"
+              type="number"
+              min="1"
+              :max="assistantPerSourceCountMax"
+              @blur="onAssistantPerSourceCountBlur"
+            >
+          </label>
+          <base-button :disabled="savingAssistantSettings" @click="saveAssistantSettings">
+            {{ savingAssistantSettings ? '保存中...' : '保存设置' }}
+          </base-button>
+        </div>
+        <p class="hint">当前 default key 最多允许设置为 {{ assistantPerSourceCountMax }} 条。</p>
+      </div>
+
       <div class="panel list">
         <div class="list-header">
           <h4>Key 列表</h4>
@@ -46,6 +87,8 @@
                 </div>
               </div>
               <p class="meta">
+                <span>限流 {{ formatRateLimit(key.rate_limit ?? key.rateLimitRph) }}</span>
+                <span class="sep">·</span>
                 <span>上限 {{ key.max_count || 12 }} 条</span>
                 <span class="sep">·</span>
                 <span>调用 {{ key.call_count || 0 }} 次</span>
@@ -167,11 +210,13 @@ import BaseInput from '@/shared/components/base-input.vue'
 import BaseModal from '@/shared/components/base-modal.vue'
 import { useAuthApi } from '@/shared/composables/useAuthApi'
 import { useSourcesApi } from '@/shared/composables/useSourcesApi'
+import { usePreferencesApi } from '@/shared/composables/usePreferencesApi'
 import { useUserStore } from '@/stores/use-user-store'
 import { useToast } from '@/shared/composables/useToast'
 
 const authApi = useAuthApi()
 const sourcesApi = useSourcesApi()
+const preferencesApi = usePreferencesApi()
 const userStore = useUserStore()
 const { success, error } = useToast()
 
@@ -192,13 +237,63 @@ const selectedSourceIds = ref([])
 const showEditSourcesModal = ref(false)
 const editingKeyId = ref(null)
 const editingSourceIds = ref([])
+const assistantPerSourceCount = ref(3)
+const savingAssistantSettings = ref(false)
+const hasAssistantPerSourceCountPreference = ref(false)
 
 const isLoggedIn = computed(() => Boolean(userStore.authToken || userStore.profile))
 const sourceNameMap = computed(() => Object.fromEntries(enabledSources.value.map((s) => [s.id, s.name])))
+/** Derive level label from the default key's actual rate_limit. */
+const currentLevelLabel = computed(() => {
+  const defaultKey = keys.value.find((k) => k.is_default)
+  if (!defaultKey) return 'Free'
+  const rl = defaultKey.rate_limit ?? defaultKey.rateLimitRph ?? 3
+  if (rl < 0) return 'Pro'
+  if (rl >= 20) return 'Plus'
+  return 'Free'
+})
+
+const currentEntitlements = computed(() => {
+  const defaultKey = keys.value.find((k) => k.is_default)
+  if (!defaultKey) {
+    return { rateLimitLabel: formatRateLimit(3), maxCountLabel: '5 条' }
+  }
+  const rl = defaultKey.rate_limit ?? defaultKey.rateLimitRph ?? 3
+  const mc = defaultKey.max_count ?? 5
+  return {
+    rateLimitLabel: formatRateLimit(rl),
+    maxCountLabel: mc < 0 ? '不限' : `${mc} 条`
+  }
+})
 
 const clampMaxCount = (value) => Math.min(30, Math.max(1, Number(value) || 5))
+const normalizeKeyMaxCount = (value) => {
+  const normalized = Math.floor(Number(value))
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : 12
+}
 const onMaxCountBlur = () => {
   maxCount.value = clampMaxCount(maxCount.value)
+}
+
+const assistantPerSourceCountMax = computed(() => {
+  const defaultKey = keys.value.find((k) => k.is_default)
+  const maxCount = Number(defaultKey?.max_count)
+  return Number.isFinite(maxCount) && maxCount > 0 ? Math.floor(maxCount) : 30
+})
+
+const defaultAssistantPerSourceCount = computed(() => Math.min(3, assistantPerSourceCountMax.value))
+
+const clampAssistantPerSourceCount = (value) => {
+  const normalized = Math.floor(Number(value) || 3)
+  return Math.min(assistantPerSourceCountMax.value, Math.max(1, normalized))
+}
+const onAssistantPerSourceCountBlur = () => {
+  const rawValue = Math.floor(Number(assistantPerSourceCount.value) || 3)
+  const clampedValue = clampAssistantPerSourceCount(rawValue)
+  if (rawValue > assistantPerSourceCountMax.value) {
+    error(`不能超过当前 default key 的最大返回条数 ${assistantPerSourceCountMax.value}`)
+  }
+  assistantPerSourceCount.value = clampedValue
 }
 
 const openCreateModal = () => {
@@ -216,6 +311,12 @@ const load = async () => {
 
     const allSources = await sourcesApi.fetchSources()
     enabledSources.value = allSources || []
+    const preferencesResult = await preferencesApi.getPreferences().catch(() => ({ preferences: {} }))
+    const savedPerSourceCount = preferencesResult?.preferences?.assistant?.perSourceCount
+    hasAssistantPerSourceCountPreference.value = savedPerSourceCount !== undefined && savedPerSourceCount !== null && savedPerSourceCount !== ''
+    assistantPerSourceCount.value = hasAssistantPerSourceCountPreference.value
+      ? clampAssistantPerSourceCount(savedPerSourceCount)
+      : defaultAssistantPerSourceCount.value
 
     // Sync from main process session (persisted in session.enc, restored on boot)
     const session = await window.api.auth.getSession().catch(() => null)
@@ -260,10 +361,38 @@ const load = async () => {
     keys.value = (res?.keys || []).map((item) => ({
       ...item,
       source_ids: Array.isArray(item?.source_ids) ? item.source_ids : [],
-      max_count: clampMaxCount(item?.max_count)
+      max_count: normalizeKeyMaxCount(item?.max_count)
     }))
+    assistantPerSourceCount.value = hasAssistantPerSourceCountPreference.value
+      ? clampAssistantPerSourceCount(assistantPerSourceCount.value)
+      : defaultAssistantPerSourceCount.value
   } finally {
     loading.value = false
+  }
+}
+
+const saveAssistantSettings = async () => {
+  if (!isLoggedIn.value) return
+  savingAssistantSettings.value = true
+  try {
+    const rawValue = Math.floor(Number(assistantPerSourceCount.value) || 3)
+    if (rawValue > assistantPerSourceCountMax.value) {
+      assistantPerSourceCount.value = assistantPerSourceCountMax.value
+      throw new Error(`不能超过当前 default key 的最大返回条数 ${assistantPerSourceCountMax.value}`)
+    }
+    assistantPerSourceCount.value = clampAssistantPerSourceCount(rawValue)
+    const result = await preferencesApi.savePreferences({
+      assistant: {
+        perSourceCount: assistantPerSourceCount.value
+      }
+    })
+    if (result?.error) throw new Error(result.error)
+    hasAssistantPerSourceCountPreference.value = true
+    success('热点每源条数已保存，将在后续请求中生效。')
+  } catch (err) {
+    error(err?.message || '保存热点设置失败')
+  } finally {
+    savingAssistantSettings.value = false
   }
 }
 
@@ -291,9 +420,16 @@ const clearSources = () => {
 }
 
 const formatLastUsed = (value) => {
-  const ts = Number(value || 0)
-  if (!ts) return '从未调用'
-  return new Date(ts).toLocaleString()
+  if (!value) return '从未调用'
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return '从未调用'
+  return date.toLocaleString('zh-CN')
+}
+
+const formatRateLimit = (value) => {
+  const rate = Number(value)
+  if (!Number.isFinite(rate) || rate < 0) return '不限'
+  return `${rate}/小时`
 }
 
 const createKey = async () => {
@@ -474,6 +610,21 @@ onMounted(load)
   border-radius: 999px;
 }
 
+.entitlement-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.entitlement-item {
+  background: color-mix(in srgb, var(--surface) 88%, #edf4ff);
+  border: 1px solid color-mix(in srgb, var(--border) 82%, #c6d8ff);
+  border-radius: 0.8rem;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.85rem 0.9rem;
+}
+
 .key-list {
   display: grid;
   gap: 0.5rem;
@@ -648,9 +799,22 @@ onMounted(load)
   min-width: 0;
 }
 
+.assistant-settings-row {
+  align-items: end;
+  display: flex;
+  gap: 0.9rem;
+  justify-content: space-between;
+}
+
 .count-field {
   display: grid;
   gap: 0.3rem;
+}
+
+.count-field.inline {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
 }
 
 .count-field span {
@@ -872,6 +1036,10 @@ onMounted(load)
 }
 
 @media (max-width: 900px) {
+  .entitlement-grid {
+    grid-template-columns: 1fr;
+  }
+
   .key-item {
     flex-direction: column;
     align-items: flex-start;

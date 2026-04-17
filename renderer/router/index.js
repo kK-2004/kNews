@@ -1,4 +1,6 @@
 import { createMemoryHistory, createRouter, createWebHistory, createWebHashHistory } from 'vue-router'
+import { useToast } from '@/shared/composables/useToast'
+import { useUserStore } from '@/stores/use-user-store'
 
 export const routes = [
   {
@@ -44,7 +46,7 @@ export const routes = [
     path: '/assistant',
     name: 'assistant',
     component: () => import('@/features/assistant/index.vue'),
-    meta: { title: 'K-Ai 对话' }
+    meta: { title: 'K-Ai 对话', requiresAuth: true }
   },
   {
     path: '/settings',
@@ -106,7 +108,13 @@ export function createAppRouter({ ssr = false, base = import.meta.env.BASE_URL }
 
   router.beforeEach((to) => {
     if (to.meta?.requiresAuth) {
-      return { name: 'home' }
+      const userStore = useUserStore()
+      const isLoggedIn = Boolean(userStore.authToken || userStore.profile)
+      if (!isLoggedIn) {
+        const { warning } = useToast()
+        warning('请登录', { timeout: 3000 })
+        return false
+      }
     }
     return true
   })

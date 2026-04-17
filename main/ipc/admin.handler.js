@@ -20,7 +20,7 @@ function hashApiKey(apiKey) {
  * @param {Electron.IpcMain} ipcMain
  * @param {Object} deps
  */
-function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, authContext }) {
+function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, usageRepo, authContext }) {
   // --- Datasources ---
 
   ipcMain.handle('admin:listDatasources', async () => {
@@ -150,7 +150,7 @@ function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, authContext }) {
         keys: (keys || []).map((k) => ({
           id: k.id,
           name: k.name || '未命名 Key',
-          rateLimitRph: k.rate_limit || 100,
+          rateLimitRph: k.rate_limit ?? 100,
           callCount: k.call_count || 0,
           lastUsed: k.last_used || null,
         })),
@@ -231,6 +231,10 @@ function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, authContext }) {
         return { keys: [] };
       }
 
+      if (params?.keyId) {
+        query = query.eq('id', params.keyId);
+      }
+
       const { data, error } = await query;
       if (error) throw error;
 
@@ -239,7 +243,7 @@ function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, authContext }) {
           id: k.id,
           name: k.name || '未命名 Key',
           username: k.users?.nickname || '未知',
-          rateLimitRph: k.rate_limit || 100,
+          rateLimitRph: k.rate_limit ?? 100,
           callCount: k.call_count || 0,
           call_count: k.call_count || 0,
           lastCallTime: k.last_used || null,
@@ -247,7 +251,7 @@ function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, authContext }) {
           active: k.is_active,
           is_default: k.is_default || false,
           source_ids: typeof k.source_scope === 'string' ? JSON.parse(k.source_scope) : (Array.isArray(k.source_scope) ? k.source_scope : []),
-          max_count: k.max_count || 10,
+          max_count: k.max_count ?? 10,
         })),
       };
     } catch (err) {
@@ -327,12 +331,55 @@ function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, authContext }) {
 
   ipcMain.handle('admin:getAnalytics', async (_event, params) => {
     try {
-      const { start, end } = params || {};
-      // Return empty analytics for now — can be expanded with a usage_logs table
+      const startTs = Number(params?.start || 0);
+      const endTs = Number(params?.end || Date.now());
+
+      let query = apiKeyRepo.supabase
+        .from('api_key')
+        .select('id, name, call_count, last_used, users(nickname)')
+        .eq('is_active', true)
+        .order('call_count', { ascending: false });
+
+      if (params?.keyId) {
+        query = query.eq('id', params.keyId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const keys = (data || []).map((item) => ({
+        id: item.id,
+        apiKeyName: item.name || '未命名',
+        username: item.users?.nickname || '未知',
+        calls: Number(item.call_count || 0),
+        lastUsed: item.last_used || null,
+      }));
+
+      const total = keys.reduce((sum, item) => sum + item.calls, 0);
+      const leaderboardItems = keys.filter((item) => item.calls > 0).slice(0, 10);
+      const hourLabelDate = Number.isFinite(endTs) ? new Date(endTs) : new Date();
+      const leaderboardHour = `${hourLabelDate.getUTCFullYear()}-${String(hourLabelDate.getUTCMonth() + 1).padStart(2, '0')}-${String(hourLabelDate.getUTCDate()).padStart(2, '0')} ${String(hourLabelDate.getUTCHours()).padStart(2, '0')}`;
+
+      const recentCalls = keys.filter((item) => {
+        if (!item.lastUsed) return false;
+        const ts = new Date(item.lastUsed).getTime();
+        return Number.isFinite(ts) && ts >= startTs && ts <= endTs;
+      }).length;
+
+      // Query hourly usage data from usage table
+      let hourly = [];
+      if (usageRepo) {
+        try {
+          hourly = await usageRepo.findByRange(startTs, endTs, { keyId: params?.keyId || undefined });
+        } catch (_e) {
+          // non-critical – return empty hourly
+        }
+      }
+
       return {
-        hourly: [],
-        leaderboard: { items: [], hour: '' },
-        total: 0,
+        hourly,
+        leaderboard: { items: leaderboardItems, hour: leaderboardHour, recentCalls },
+        total,
       };
     } catch (err) {
       return { hourly: [], leaderboard: { items: [], hour: '' }, total: 0, error: err.message };

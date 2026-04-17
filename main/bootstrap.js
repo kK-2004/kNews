@@ -24,6 +24,7 @@ const SubscriptionService = require('../core/subscription/subscription-service')
 const ChatRepository = require('../core/chat/chat-repository');
 const LlmClient = require('../core/chat/llm-client');
 const ChatService = require('../core/chat/chat-service');
+const UsageRepository = require('../core/usage/usage-repository');
 
 /**
  * Application bootstrap – wires every layer together.
@@ -63,6 +64,7 @@ async function bootstrap({ safeStorage, shell }) {
   const apiKeyRepo = new ApiKeyRepository(supabase);
   const settingsRepo = new SettingsRepository(supabase);
   const prefRepo = new PreferenceRepository(supabase, localCache);
+  const usageRepo = new UsageRepository(supabase);
 
   // 5. Services
   const userService = new UserService(userRepo, apiKeyRepo);
@@ -110,6 +112,7 @@ async function bootstrap({ safeStorage, shell }) {
     localCache,
     apiKeyRepo,
     authContext,
+    prefRepo,
     mcpServer: null,
   });
 
@@ -147,6 +150,7 @@ async function bootstrap({ safeStorage, shell }) {
     sourceService,
     feedService,
     apiKeyRepository: apiKeyRepo,
+    usageRepository: usageRepo,
   });
   await mcpServer.start();
   chatService.mcpServer = mcpServer;
@@ -157,6 +161,9 @@ async function bootstrap({ safeStorage, shell }) {
     const savedSession = await sessionPersistence.loadValidSession();
     if (savedSession) {
       authContext.session = savedSession;
+      await prefRepo.findByUserId(savedSession.userId).catch((err) => {
+        console.warn('[bootstrap] Failed to warm preference cache:', err.message);
+      });
       console.log('[bootstrap] Session restored.');
     } else {
       console.log('[bootstrap] No valid session found.');
@@ -176,6 +183,7 @@ async function bootstrap({ safeStorage, shell }) {
     settingsRepo,
     userService,
     prefRepo,
+    usageRepo,
     sourceService,
     feedService,
     authContext,

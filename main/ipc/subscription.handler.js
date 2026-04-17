@@ -36,6 +36,10 @@ function register(ipcMain, { subscriptionService, authContext }) {
         return { error: 'plan is required' };
       }
       const subscription = await subscriptionService.createSubscription(session.userId, plan);
+      authContext.session = {
+        ...session,
+        level: subscription.level,
+      };
       return { success: true, subscription };
     } catch (err) {
       return { error: err.message };

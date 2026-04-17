@@ -99,7 +99,7 @@
           <div class="key-main">
             <p class="key-name">{{ key.name || '未命名 Key' }}</p>
             <div class="key-stats">
-              <span class="key-stat">限流: {{ key.rateLimitRph || '-' }}/h</span>
+              <span class="key-stat">限流: {{ formatRateLimit(key.rateLimitRph) }}</span>
               <span class="key-stat">调用: {{ key.callCount || 0 }}</span>
               <span class="key-stat">最后: {{ formatLastUsed(key.lastUsed) }}</span>
             </div>
@@ -217,6 +217,12 @@ const formatLastActive = (value) => {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+const formatRateLimit = (value) => {
+  const rate = Number(value)
+  if (!Number.isFinite(rate) || rate < 0) return '不限'
+  return `${rate}/h`
 }
 
 const formatDate = (value) => {

@@ -31,8 +31,8 @@
         </div>
       </header>
 
-      <div ref="messagesRef" class="chat-messages">
-        <div v-if="chatStore.messages.length === 0 && !chatStore.sending" class="empty-state">
+      <div ref="messagesRef" class="chat-messages" @scroll="onMessagesScroll">
+        <div v-if="chatStore.messages.length === 0 && !chatStore.isCurrentSessionStreaming" class="empty-state">
           <div class="empty-icon">
             <span class="i-tabler-robot" aria-hidden="true"></span>
           </div>
@@ -48,9 +48,53 @@
           <div v-if="msg.role === 'assistant'" class="avatar avatar-ai">
             <span class="i-tabler-robot" aria-hidden="true"></span>
           </div>
-          <div :class="['message-bubble', msg.role]">
-            <div v-if="msg.role === 'assistant'" class="message-text" v-html="renderMarkdown(msg.content)"></div>
-            <div v-else class="message-text">{{ msg.content }}</div>
+          <div :class="['message-stack', msg.role]">
+            <div :class="['message-bubble', msg.role]">
+              <template v-if="msg.role === 'assistant'">
+                <div v-if="hasHotTopics(msg.hotTopics)" class="hot-topics-card">
+                  <div class="hot-topics-card-header">
+                    <span class="hot-topics-card-title">热点速览</span>
+                    <span class="hot-topics-card-meta">{{ formatHotTopicsMeta(msg.hotTopics) }}</span>
+                  </div>
+                  <div class="hot-topics-sections">
+                    <section v-for="section in msg.hotTopics.sections" :key="section.sourceId" class="hot-topics-section">
+                      <div class="hot-topics-section-title">{{ section.sourceName }}</div>
+                      <div
+                        v-for="(item, itemIndex) in section.items"
+                        :key="item.id"
+                        class="news-row hot-topics-news-row"
+                        role="button"
+                        tabindex="0"
+                        @click="openUrl(item.url)"
+                        @keydown.enter.prevent="openUrl(item.url)"
+                        @keydown.space.prevent="openUrl(item.url)"
+                      >
+                        <div class="news-row-index">{{ itemIndex + 1 }}</div>
+                        <div class="news-row-body">
+                          <div class="news-row-title">
+                            {{ item.title }}
+                            <!-- <span v-if="item.sourceName" class="news-row-source">{{ item.sourceName }}</span> -->
+                          </div>
+                          <div v-if="item.summary" class="news-row-desc hot-topic-item-summary">{{ item.summary }}</div>
+                          <div v-else-if="item.summaryStatus === 'loading'" class="news-row-desc hot-topic-item-summary loading" aria-hidden="true">
+                            <span></span><span></span><span></span>
+                          </div>
+                          <div v-else-if="item.summaryStatus === 'empty'" class="news-row-desc hot-topic-item-summary placeholder">暂无摘要</div>
+                          <div v-else-if="item.summaryStatus === 'error'" class="news-row-desc hot-topic-item-summary placeholder error">摘要加载失败</div>
+                          <div v-else-if="item.summaryStatus === 'aborted'" class="news-row-desc hot-topic-item-summary placeholder">摘要已取消</div>
+                          <div class="hot-topic-item-meta">
+                            <span v-if="item.publishedAt">{{ item.publishedAt }}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+                <div v-if="msg.content" class="message-text" v-html="renderMarkdown(msg.content)"></div>
+              </template>
+              <div v-else class="message-text">{{ msg.content }}</div>
+            </div>
+            <div v-if="msg.timestamp" class="message-time">{{ formatMessageTime(msg.timestamp) }}</div>
           </div>
           <div v-if="msg.role === 'user'" class="avatar avatar-user">
             <span class="i-tabler-user" aria-hidden="true"></span>
@@ -58,13 +102,57 @@
         </div>
 
         <div
-          v-if="chatStore.sending || chatStore.statusEvents.length > 0 || chatStore.streamingThinking || chatStore.streamingContent !== null"
+          v-if="chatStore.isCurrentSessionStreaming || chatStore.statusEvents.length > 0 || chatStore.streamingThinking || chatStore.streamingContent !== null"
           class="message-row assistant"
         >
           <div class="avatar avatar-ai">
             <span class="i-tabler-robot" aria-hidden="true"></span>
           </div>
           <div class="message-bubble assistant streaming pending-bubble">
+            <div v-if="hasHotTopics(chatStore.pendingHotTopics)" class="hot-topics-card pending-hot-topics-card">
+              <div class="hot-topics-card-header">
+                <span class="hot-topics-card-title">热点速览</span>
+                <span class="hot-topics-card-meta">{{ formatHotTopicsMeta(chatStore.pendingHotTopics) }}</span>
+              </div>
+              <div class="hot-topics-sections">
+                <section
+                  v-for="section in chatStore.pendingHotTopics.sections"
+                  :key="section.sourceId"
+                  class="hot-topics-section"
+                >
+                  <div class="hot-topics-section-title">{{ section.sourceName }}</div>
+                  <div
+                    v-for="(item, itemIndex) in section.items"
+                    :key="item.id"
+                    class="news-row hot-topics-news-row"
+                    role="button"
+                    tabindex="0"
+                    @click="openUrl(item.url)"
+                    @keydown.enter.prevent="openUrl(item.url)"
+                    @keydown.space.prevent="openUrl(item.url)"
+                  >
+                    <div class="news-row-index">{{ itemIndex + 1 }}</div>
+                    <div class="news-row-body">
+                      <div class="news-row-title">
+                        {{ item.title }}
+                        <span v-if="item.sourceName" class="news-row-source">{{ item.sourceName }}</span>
+                      </div>
+                      <div v-if="item.summary" class="news-row-desc hot-topic-item-summary">{{ item.summary }}</div>
+                      <div v-else-if="item.summaryStatus === 'loading'" class="news-row-desc hot-topic-item-summary loading" aria-hidden="true">
+                        <span></span><span></span><span></span>
+                      </div>
+                      <div v-else-if="item.summaryStatus === 'empty'" class="news-row-desc hot-topic-item-summary placeholder">暂无摘要</div>
+                      <div v-else-if="item.summaryStatus === 'error'" class="news-row-desc hot-topic-item-summary placeholder error">摘要加载失败</div>
+                      <div v-else-if="item.summaryStatus === 'aborted'" class="news-row-desc hot-topic-item-summary placeholder">摘要已取消</div>
+                      <div class="hot-topic-item-meta">
+                        <span v-if="item.publishedAt">{{ item.publishedAt }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+
             <div
               v-if="chatStore.latestStatusEvent"
               :class="['status-line', statusClass(chatStore.latestStatusEvent.status)]"
@@ -102,7 +190,19 @@
           <span class="i-tabler-alert-circle" aria-hidden="true"></span>
           {{ chatStore.error }}
         </div>
+
       </div>
+
+      <button
+        v-if="showScrollToBottom"
+        class="scroll-to-bottom-btn"
+        type="button"
+        aria-label="滚动到底部"
+        title="滚动到底部"
+        @click="scrollToLatest"
+      >
+        <span class="i-tabler-chevron-down scroll-to-bottom-icon" aria-hidden="true"></span>
+      </button>
 
       <div class="chat-input-area">
         <div class="input-wrapper">
@@ -112,12 +212,12 @@
             class="chat-textarea"
             placeholder="问 K-Ai 任何问题..."
             rows="1"
-            :disabled="chatStore.sending"
+            :disabled="chatStore.isCurrentSessionStreaming"
             @keydown.enter.exact.prevent="onSend"
             @input="autoResize"
           ></textarea>
           <button
-            v-if="chatStore.sending"
+            v-if="chatStore.isCurrentSessionStreaming"
             class="stop-btn"
             type="button"
             @click="chatStore.abortSending()"
@@ -152,13 +252,16 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted, watch } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useChatStore } from '@/stores/use-chat-store'
 
 const chatStore = useChatStore()
 const inputText = ref('')
 const inputRef = ref(null)
 const messagesRef = ref(null)
+const autoStickToBottom = ref(true)
+const showScrollToBottom = ref(false)
+const scrollBottomThreshold = 48
 
 const hotTopics = ref([
   '今天有什么热点新闻？',
@@ -168,34 +271,72 @@ const hotTopics = ref([
 
 onMounted(async () => {
   await chatStore.loadSessions()
+  nextTick(() => scrollToBottom(true))
 })
 
 watch(
   () => chatStore.messages.length,
-  () => nextTick(scrollToBottom),
+  () => syncScrollAfterUpdate(),
 )
 watch(
   () => chatStore.sending,
   (v) => {
-    if (v) nextTick(scrollToBottom)
+    if (v) {
+      autoStickToBottom.value = true
+      showScrollToBottom.value = false
+      syncScrollAfterUpdate(true)
+    }
   },
 )
 watch(
   () => chatStore.streamingContent,
-  () => nextTick(scrollToBottom),
+  () => syncScrollAfterUpdate(),
 )
 watch(
   () => chatStore.statusEvents.length,
-  () => nextTick(scrollToBottom),
+  () => syncScrollAfterUpdate(),
 )
 watch(
   () => chatStore.streamingThinking,
-  () => nextTick(scrollToBottom),
+  () => syncScrollAfterUpdate(),
 )
 
-function scrollToBottom() {
+onBeforeUnmount(() => {
+  autoStickToBottom.value = true
+  showScrollToBottom.value = false
+})
+
+function getDistanceFromBottom() {
   const el = messagesRef.value
-  if (el) el.scrollTop = el.scrollHeight
+  if (!el) return 0
+  return Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight)
+}
+
+function syncScrollState() {
+  const distance = getDistanceFromBottom()
+  const isNearBottom = distance <= scrollBottomThreshold
+  autoStickToBottom.value = isNearBottom
+  showScrollToBottom.value = !isNearBottom
+}
+
+function onMessagesScroll() {
+  syncScrollState()
+}
+
+function scrollToBottom(force = false) {
+  const el = messagesRef.value
+  if (!el || (!force && !autoStickToBottom.value)) return
+  el.scrollTop = el.scrollHeight
+  autoStickToBottom.value = true
+  showScrollToBottom.value = false
+}
+
+function syncScrollAfterUpdate(force = false) {
+  nextTick(() => scrollToBottom(force))
+}
+
+function scrollToLatest() {
+  scrollToBottom(true)
 }
 
 function autoResize(e) {
@@ -206,6 +347,9 @@ function autoResize(e) {
 
 async function onNewChat() {
   await chatStore.createSession()
+  autoStickToBottom.value = true
+  showScrollToBottom.value = false
+  syncScrollAfterUpdate(true)
   nextTick(() => inputRef.value?.focus())
 }
 
@@ -216,6 +360,8 @@ async function onSend() {
   if (inputRef.value) {
     inputRef.value.style.height = 'auto'
   }
+  autoStickToBottom.value = true
+  showScrollToBottom.value = false
   await chatStore.sendMessage(text)
   nextTick(() => inputRef.value?.focus())
 }
@@ -230,6 +376,7 @@ async function onHotTopic(topic) {
 }
 
 function openUrl(url) {
+  if (!url) return
   window.open(url, '_blank')
 }
 
@@ -238,7 +385,7 @@ function statusClass(status) {
 }
 
 function formatLatestStatus(event) {
-  if (event?.status === 'ready' || event?.status === 'failed') {
+  if (event?.status === 'ready' || event?.status === 'failed' || event?.status === 'empty') {
     return event?.detail || ''
   }
 
@@ -253,6 +400,45 @@ function formatLatestStatus(event) {
     ready: '拉取成功',
   }
   return `${prefix} ${statusMap[event?.status] || '处理中'}`
+}
+
+function hasHotTopics(payload) {
+  return Array.isArray(payload?.sections) && payload.sections.some((section) => Array.isArray(section?.items) && section.items.length > 0)
+}
+
+function formatHotTopicsMeta(payload) {
+  const totalSources = Number(payload?.totalSources || 0)
+  const totalItems = Number(payload?.totalItems || 0)
+  return `${totalSources} 个来源 · ${totalItems} 条热点`
+}
+
+function formatMessageTime(value) {
+  if (!value) return ''
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const now = new Date()
+  const isSameYear = date.getFullYear() === now.getFullYear()
+  const isSameDay = isSameYear
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate()
+
+  if (isSameDay) {
+    return date.toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  if (isSameYear) {
+    const datePart = `${date.getMonth() + 1}月${date.getDate()}日`
+    const timePart = date.toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+    return `${datePart} ${timePart}`
+  }
+
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
 }
 
 /**
@@ -556,6 +742,7 @@ if (typeof window !== 'undefined') {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  position: relative;
 }
 
 .empty-state {
@@ -595,10 +782,26 @@ if (typeof window !== 'undefined') {
 
 .message-row.user {
   justify-content: flex-end;
+  width: 100%;
+  max-width: 100%;
 }
 
 .message-row.assistant {
   justify-content: flex-start;
+}
+
+.message-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.message-stack.user {
+  align-items: flex-end;
+}
+
+.message-stack.assistant {
+  align-items: flex-start;
 }
 
 .avatar {
@@ -633,6 +836,12 @@ if (typeof window !== 'undefined') {
 }
 
 .message-bubble.user {
+  width: fit-content;
+  max-width: 100%;
+  min-width: 2.5em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
   background: #0b63ff;
   color: #fff;
   border-top-right-radius: 0.2rem;
@@ -656,6 +865,18 @@ if (typeof window !== 'undefined') {
 
 .message-bubble.streaming {
   padding-right: 1.1rem;
+}
+
+.message-time {
+  color: color-mix(in srgb, var(--muted) 62%, transparent);
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+  transition: color 0.15s ease;
+}
+
+.message-stack:hover .message-time {
+  color: color-mix(in srgb, var(--text) 55%, var(--muted));
 }
 
 .cursor-blink {
@@ -743,6 +964,187 @@ if (typeof window !== 'undefined') {
     linear-gradient(180deg, color-mix(in srgb, #0b63ff 4%, var(--surface)) 0%, var(--surface) 100%);
 }
 
+.hot-topics-card {
+  display: grid;
+  gap: 0.9rem;
+  padding: 0.1rem 0 0.2rem;
+}
+
+.pending-hot-topics-card {
+  padding-top: 0;
+}
+
+.hot-topics-card-header {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.7rem;
+  justify-content: space-between;
+}
+
+.hot-topics-card-title {
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.hot-topics-card-meta {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.hot-topics-sections {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.hot-topics-section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.hot-topics-section-title {
+  color: #0b63ff;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.hot-topics-news-row {
+  align-items: flex-start;
+  cursor: pointer;
+  display: flex;
+  gap: 1rem;
+  margin: 0.2rem 0;
+  padding: 0;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.hot-topics-news-row:hover {
+  transform: translateX(2px);
+  opacity: 0.96;
+}
+
+.hot-topics-news-row .news-row-index {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 0.4rem;
+  background: #eef2f6;
+  color: #1e3a8a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.hot-topics-news-row .news-row-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.1rem;
+}
+
+.hot-topics-news-row .news-row-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #0f172a;
+  line-height: 1.3;
+}
+
+.hot-topics-news-row .news-row-desc {
+  font-size: 0.9rem;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.hot-topics-news-row .news-row-source {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #0b63ff;
+  background: color-mix(in srgb, #0b63ff 10%, transparent);
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.25rem;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
+.hot-topic-item-summary {
+  min-height: 1.35rem;
+}
+
+.hot-topic-item-summary.placeholder {
+  align-items: center;
+  display: inline-flex;
+  opacity: 0.82;
+}
+
+.hot-topic-item-summary.placeholder.error {
+  color: #d05a2f;
+}
+
+.hot-topic-item-summary.loading {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.28rem;
+}
+
+.hot-topic-item-summary.loading span {
+  animation: hot-topic-summary-bounce 1.1s infinite;
+  background: color-mix(in srgb, #0b63ff 72%, var(--muted));
+  border-radius: 999px;
+  height: 0.28rem;
+  width: 0.28rem;
+}
+
+.hot-topic-item-summary.loading span:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.hot-topic-item-summary.loading span:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+@keyframes hot-topic-summary-bounce {
+  0%, 80%, 100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-0.12rem);
+  }
+}
+
+.hot-topic-item-meta {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.74rem;
+  gap: 0.35rem 0.55rem;
+}
+
+.theme-dark .hot-topics-news-row .news-row-index {
+  background: #1e293b;
+  color: #93c5fd;
+}
+
+.theme-dark .hot-topics-news-row .news-row-title {
+  color: #f1f5f9;
+}
+
+.theme-dark .hot-topics-news-row .news-row-desc {
+  color: #94a3b8;
+}
+
+.theme-dark .hot-topics-news-row .news-row-source {
+  color: #60a5fa;
+  background: color-mix(in srgb, #3b82f6 15%, transparent);
+}
+
 .pending-text {
   padding-top: 0.1rem;
 }
@@ -760,6 +1162,62 @@ if (typeof window !== 'undefined') {
   max-width: 50rem;
   margin: 0 auto;
   width: 100%;
+}
+
+.scroll-to-bottom-btn {
+  position: fixed;
+  right: 2rem;
+  bottom: 6.25rem;
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid color-mix(in srgb, var(--text) 8%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 94%, white);
+  color: var(--text);
+  box-shadow: 0 10px 40px rgba(27, 27, 27, 0.1);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    background 0.25s ease,
+    border-color 0.25s ease;
+  z-index: 60;
+  backdrop-filter: blur(12px);
+}
+
+.scroll-to-bottom-btn:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--surface) 98%, white);
+  border-color: color-mix(in srgb, var(--text) 14%, var(--border));
+  box-shadow: 0 15px 50px rgba(27, 27, 27, 0.15);
+}
+
+.scroll-to-bottom-btn:active {
+  transform: scale(0.95);
+}
+
+.scroll-to-bottom-icon {
+  font-size: 1.35rem;
+  transition: transform 0.25s ease;
+}
+
+.scroll-to-bottom-btn:hover .scroll-to-bottom-icon {
+  transform: translateY(2px);
+}
+
+.theme-dark .scroll-to-bottom-btn {
+  background: color-mix(in srgb, #000 92%, var(--surface));
+  border-color: color-mix(in srgb, #fff 10%, var(--border));
+  box-shadow: 0 15px 50px rgba(0, 0, 0, 0.32);
+}
+
+.theme-dark .scroll-to-bottom-btn:hover {
+  background: color-mix(in srgb, #000 96%, var(--surface));
+  border-color: color-mix(in srgb, #fff 16%, var(--border));
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.4);
 }
 
 /* ---- Input ---- */

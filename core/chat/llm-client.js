@@ -14,18 +14,18 @@ class LlmClient {
     this.apiBase = (process.env.LLM_API_BASE || '').replace(/\/+$/, '');
     this.apiKey = process.env.LLM_API_KEY || '';
     this.model = process.env.LLM_MODEL || 'glm-4.7';
-    /** @type {AbortController|null} active stream controller for external abort */
-    this._activeController = null;
+    /** @type {Set<AbortController>} */
+    this._activeControllers = new Set();
   }
 
   /**
    * Abort the currently active streaming request (if any).
    */
   abortActive() {
-    if (this._activeController) {
-      this._activeController.abort();
-      this._activeController = null;
+    for (const controller of this._activeControllers) {
+      controller.abort();
     }
+    this._activeControllers.clear();
   }
 
   /**
@@ -52,6 +52,7 @@ class LlmClient {
     const url = `${this.apiBase}/chat/completions`;
 
     const controller = new AbortController();
+    this._activeControllers.add(controller);
     const timer = setTimeout(() => controller.abort(), timeout);
 
     try {
@@ -86,6 +87,71 @@ class LlmClient {
       throw err;
     } finally {
       clearTimeout(timer);
+      this._activeControllers.delete(controller);
+    }
+  }
+
+  /**
+   * Send a non-streaming tool-call constrained request.
+   *
+   * @param {Array<{role: string, content: string}>} messages
+   * @param {{ tools: Array<Object>, toolChoice?: Object, timeout?: number, signal?: AbortSignal, model?: string }} options
+   * @returns {Promise<{ toolCalls: Array<Object>, content: string }>}
+   */
+  async chatTool(messages, { tools, toolChoice, timeout: timeoutMs, signal, model } = {}) {
+    if (!this.isConfigured()) {
+      throw new Error('LLM 未配置。请检查 LLM_API_BASE 和 LLM_API_KEY 环境变量。');
+    }
+
+    const timeout = timeoutMs || 45_000;
+    const url = `${this.apiBase}/chat/completions`;
+    const controller = new AbortController();
+    this._activeControllers.add(controller);
+    let didTimeout = false;
+    const timer = setTimeout(() => {
+      didTimeout = true;
+      controller.abort();
+    }, timeout);
+
+    if (signal) {
+      signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: model || this.model,
+          messages,
+          tools,
+          tool_choice: toolChoice,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`LLM API 错误 (${res.status}): ${body.slice(0, 200)}`);
+      }
+
+      const data = await res.json();
+      const message = data?.choices?.[0]?.message || {};
+      return {
+        toolCalls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
+        content: typeof message.content === 'string' ? message.content : '',
+      };
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        throw new Error(didTimeout ? 'LLM 请求超时。' : 'LLM 请求已中断。');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+      this._activeControllers.delete(controller);
     }
   }
   /**
@@ -104,7 +170,7 @@ class LlmClient {
     const url = `${this.apiBase}/chat/completions`;
 
     const controller = new AbortController();
-    this._activeController = controller;
+    this._activeControllers.add(controller);
     const timer = setTimeout(() => controller.abort(), timeout);
     let fullContent = '';
 
@@ -188,7 +254,7 @@ class LlmClient {
       throw err;
     } finally {
       clearTimeout(timer);
-      this._activeController = null;
+      this._activeControllers.delete(controller);
     }
   }
 }

@@ -117,13 +117,14 @@ class RateLimiter {
 
 class McpServer {
   /**
-   * @param {{ sourceService: object, feedService: object, apiKeyRepository: object }} deps
+   * @param {{ sourceService: object, feedService: object, apiKeyRepository: object, usageRepository?: object }} deps
    * @param {{ port?: number }=} opts
    */
-  constructor({ sourceService, feedService, apiKeyRepository }, opts = {}) {
+  constructor({ sourceService, feedService, apiKeyRepository, usageRepository }, opts = {}) {
     this.sourceService = sourceService;
     this.feedService = feedService;
     this.apiKeyRepository = apiKeyRepository;
+    this.usageRepository = usageRepository;
 
     this.defaultPort = opts.port || 12580;
     /** @type {http.Server|null} */
@@ -132,6 +133,20 @@ class McpServer {
     this.startedAt = null;
 
     this.rateLimiter = new RateLimiter();
+
+    /**
+     * Active MCP sessions, keyed by session ID.
+     * Each entry holds the SDK server instance, transport, and associated API key.
+     * @type {Map<string, { server: object, transport: object, apiKeyId: string, createdAt: number }>}
+     */
+    this._sessions = new Map();
+
+    /**
+     * Sessions that have already been counted for usage in the current hour.
+     * Key: `${apiKeyId}:${sessionId}` — cleared on hourly boundary.
+     * @type {Set<string>}
+     */
+    this._billedSessions = new Set();
   }
 
   // -----------------------------------------------------------------------
@@ -183,10 +198,17 @@ class McpServer {
   }
 
   /**
-   * Gracefully stop the server.
+   * Gracefully stop the server and clean up all sessions.
    */
   stop() {
     return new Promise((resolve) => {
+      // Close all active sessions
+      for (const entry of this._sessions.values()) {
+        entry.server.close().catch(() => {});
+      }
+      this._sessions.clear();
+      this._billedSessions.clear();
+
       if (!this.server) {
         resolve();
         return;
@@ -298,9 +320,14 @@ class McpServer {
       return jsonResponse(res, 401, { error: 'Unauthorized' });
     }
 
-    // Rate limit – default 100 requests/hour if not set on the key
+    // Rate limit – default 100 requests/hour if not set on the key.
+    // Negative values mean "unlimited".
     const rateLimit =
       typeof apiKeyRow.rate_limit === 'number' ? apiKeyRow.rate_limit : 100;
+    if (rateLimit < 0) {
+      return handler(apiKeyRow);
+    }
+
     const result = this.rateLimiter.check(apiKeyRow.id, rateLimit);
 
     if (!result.allowed) {
@@ -310,19 +337,54 @@ class McpServer {
       });
     }
 
-    // Update usage counters in the background (fire-and-forget)
-    try {
-      this.apiKeyRepository.updateUsage(apiKeyRow.id).catch(() => {});
-    } catch (_e) {
-      // non-critical
-    }
-
     return handler(apiKeyRow);
   }
 
-  // -----------------------------------------------------------------------
-  // Endpoint handlers
-  // -----------------------------------------------------------------------
+  /**
+   * Extract Mcp-Session-Id from request headers.
+   * @param {http.IncomingMessage} req
+   * @returns {string|null}
+   */
+  _getSessionId(req) {
+    const val = req.headers['mcp-session-id'];
+    if (typeof val === 'string' && val.trim()) return val.trim();
+    return null;
+  }
+
+  /**
+   * Get a billing key for the current hour + apiKey + session.
+   * If no session exists, creates a one-shot key so the request is still billed.
+   * @param {string} apiKeyId
+   * @param {string|null} sessionId
+   * @returns {string}
+   */
+  _getBillingKey(apiKeyId, sessionId) {
+    const now = new Date();
+    const hour = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')} ${String(now.getUTCHours()).padStart(2, '0')}`;
+    const session = sessionId || `nosession-${crypto.randomUUID()}`;
+    return `${hour}:${apiKeyId}:${session}`;
+  }
+
+  /**
+   * Record hourly usage for the given API key, once per session per hour.
+   *
+   * @param {string} apiKeyId
+   * @param {string|null} sessionId - Mcp-Session-Id header value
+   */
+  _recordUsageOncePerSession(apiKeyId, sessionId) {
+    if (!this.usageRepository) return;
+
+    const billingKey = this._getBillingKey(apiKeyId, sessionId);
+    if (this._billedSessions.has(billingKey)) return;
+
+    this._billedSessions.add(billingKey);
+    try {
+      this.usageRepository.incrementHourly(apiKeyId).catch(() => {});
+      this.apiKeyRepository.updateUsage(apiKeyId).catch(() => {});
+    } catch (_e) {
+      // non-critical
+    }
+  }
 
   _handleHealth(res) {
     const uptime = this.startedAt
@@ -332,29 +394,60 @@ class McpServer {
   }
 
   async _handleMcpRequest(req, res, apiKeyRow) {
+    const sessionId = this._getSessionId(req);
+
+    // --- Existing session: reuse transport + SDK server ---
+    if (sessionId && this._sessions.has(sessionId)) {
+      const entry = this._sessions.get(sessionId);
+      try {
+        const request = await this._toWebRequest(req);
+        const response = await entry.transport.handleRequest(request);
+        return this._sendWebResponse(res, response);
+      } catch (err) {
+        console.error('[McpServer] MCP session request error:', err);
+        jsonResponse(res, 500, { error: `Internal server error: ${err.message}` });
+      }
+      return;
+    }
+
+    // --- New session (initialize) ---
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: () => crypto.randomUUID(),
+      enableJsonResponse: true,
+    });
+
     const server = createMcpSdkServer({
       sourceService: this.sourceService,
       feedService: this.feedService,
       apiKey: apiKeyRow,
-    });
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
     });
 
     try {
       const request = await this._toWebRequest(req);
       transport.onerror = (err) =>
         console.error('[McpServer] MCP transport error:', err);
+
       await server.connect(transport);
       const response = await transport.handleRequest(request);
+
+      // Capture the session ID assigned by the transport
+      const newSessionId = transport.sessionId || null;
+      if (newSessionId) {
+        this._sessions.set(newSessionId, {
+          server,
+          transport,
+          apiKeyId: apiKeyRow.id,
+          createdAt: Date.now(),
+        });
+
+        // Record usage once per session per hour
+        this._recordUsageOncePerSession(apiKeyRow.id, newSessionId);
+      }
+
       return this._sendWebResponse(res, response);
     } catch (err) {
-      console.error('[McpServer] MCP request error:', err);
-      jsonResponse(res, 500, {
-        error: `Internal server error: ${err.message}`,
-      });
-    } finally {
+      console.error('[McpServer] MCP initialize error:', err);
+      jsonResponse(res, 500, { error: `Internal server error: ${err.message}` });
       await server.close().catch(() => {});
     }
   }
@@ -406,7 +499,9 @@ class McpServer {
   }
 
   async _sendWebResponse(res, response) {
-    res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
+    // Forward all response headers (including mcp-session-id from transport)
+    const headers = Object.fromEntries(response.headers.entries());
+    res.writeHead(response.status, headers);
     if (!response.body) {
       res.end();
       return;

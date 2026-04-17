@@ -66,9 +66,30 @@ class ApiKeyRepository {
     //     UPDATE api_key SET last_used = now(), call_count = call_count + 1 WHERE id = key_id;
     //   $$ LANGUAGE sql;
     const { error } = await this.supabase.rpc('increment_api_key_usage', { key_id: id });
+    if (!error) return;
 
-    if (error) {
-      throw new Error(`Failed to update api_key usage for ${id}: ${error.message}`);
+    const { data: existing, error: fetchError } = await this.supabase
+      .from('api_key')
+      .select('call_count')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchError) {
+      throw new Error(`Failed to update api_key usage for ${id}: ${error.message}; fallback fetch failed: ${fetchError.message}`);
+    }
+
+    const nextCount = Number(existing?.call_count || 0) + 1;
+    const { error: updateError } = await this.supabase
+      .from('api_key')
+      .update({
+        last_used: new Date().toISOString(),
+        call_count: nextCount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (updateError) {
+      throw new Error(`Failed to update api_key usage for ${id}: ${error.message}; fallback update failed: ${updateError.message}`);
     }
   }
 

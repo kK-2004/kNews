@@ -24,6 +24,17 @@ MCP 请求 SHALL 通过 API Key 认证。外部 MCP 客户端与应用内部聊�
 
 ## ADDED Requirements
 
+### Requirement: 热点工具返回结构化 JSON
+`get_hotest_latest_news` SHALL 为聊天链路提供稳定的结构化热点结果，使客户端可以直接消费新闻字段，而不必依赖 markdown 或纯文本解析。
+
+#### Scenario: 热点结果包含最小结构化字段
+- **WHEN** MCP 客户端调用 `get_hotest_latest_news`
+- **THEN** 系统返回的每条新闻 MUST 至少可映射出稳定标识、标题、原文链接、来源标识、来源名称和发布时间信息
+
+#### Scenario: 结构化结果适合 UI 直接消费
+- **WHEN** 应用内部聊天客户端获取热点工具结果
+- **THEN** 系统 SHALL 为其提供足以直接构建热点卡片 JSON payload 的稳定字段，而无需依赖工具文本格式的语义解析
+
 ### Requirement: 应用内部聊天客户端兼容性
 本地 MCP Server SHALL 支持应用内部聊天链路作为正式 MCP 客户端接入，并与外部 MCP 客户端共享同一 HTTP 端点、协议行为和工具约束。
 
