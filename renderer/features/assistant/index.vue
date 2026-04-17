@@ -131,7 +131,7 @@
                     <div class="news-row-body">
                       <div class="news-row-title">
                         {{ item.title }}
-                        <span v-if="item.sourceName" class="news-row-source">{{ item.sourceName }}</span>
+                        <!-- <span v-if="item.sourceName" class="news-row-source">{{ item.sourceName }}</span> -->
                       </div>
                       <div v-if="item.summary" class="news-row-desc hot-topic-item-summary">{{ item.summary }}</div>
                       <div v-else-if="item.summaryStatus === 'loading'" class="news-row-desc hot-topic-item-summary loading" aria-hidden="true">
