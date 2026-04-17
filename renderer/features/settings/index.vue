@@ -36,7 +36,8 @@ const keepAliveComponents = [
   'McpSettings',
   'AdminDatasourcesSettings',
   'AdminUsersSettings',
-  'AdminApiKeysSettings'
+  'AdminApiKeysSettings',
+  'AdminPermissionsSettings'
 ]
 
 // 使用路由的 name 作为 key，确保切换时组件保持状态

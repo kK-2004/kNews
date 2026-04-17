@@ -67,7 +67,7 @@ async function bootstrap({ safeStorage, shell }) {
   const usageRepo = new UsageRepository(supabase);
 
   // 5. Services
-  const userService = new UserService(userRepo, apiKeyRepo);
+  const userService = new UserService(userRepo, apiKeyRepo, settingsRepo);
   const sourceService = new SourceService(sourceRepo);
   const subscriptionRepo = new SubscriptionRepository(supabase);
   const paymentService = new PaymentService();
@@ -76,6 +76,7 @@ async function bootstrap({ safeStorage, shell }) {
     paymentService,
     userRepo,
     apiKeyRepo,
+    settingsRepo,
   });
 
   // 6. ScraperEngine (created before FeedService so we can pass it)

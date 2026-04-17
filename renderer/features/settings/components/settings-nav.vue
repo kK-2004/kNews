@@ -5,6 +5,7 @@
     <RouterLink v-if="isAdmin" to="/settings/admin/datasources">后台-数据源</RouterLink>
     <RouterLink v-if="isAdmin" to="/settings/admin/users">后台-用户</RouterLink>
     <RouterLink v-if="isAdmin" to="/settings/admin/api-keys">后台-APIKey</RouterLink>
+    <RouterLink v-if="isAdmin" to="/settings/admin/permissions">后台-权益配置</RouterLink>
   </nav>
 </template>
 

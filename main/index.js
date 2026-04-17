@@ -182,6 +182,7 @@ function registerIpcHandlers(ipcMain, deps) {
     apiKeyRepo: deps.apiKeyRepo,
     usageRepo: deps.usageRepo,
     authContext: deps.authContext,
+    settingsRepo: deps.settingsRepo,
   });
 
   registerUserActionHandlers(ipcMain, {});

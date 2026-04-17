@@ -138,5 +138,11 @@ export const adminApi = {
   },
   getAnalytics(params) {
     return ensureApi().admin.getAnalytics(params).catch(wrapError)
+  },
+  getLevelPermissions() {
+    return ensureApi().admin.getLevelPermissions().catch(wrapError)
+  },
+  updateLevelPermissions(data) {
+    return ensureApi().admin.updateLevelPermissions(data).catch(wrapError)
   }
 }

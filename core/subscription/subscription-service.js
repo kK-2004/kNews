@@ -2,8 +2,8 @@
 
 const crypto = require('node:crypto');
 
-/** Level → MCP API Key permission mapping */
-const LEVEL_PERMISSIONS = {
+/** Fallback used when settings table is empty or JSON parse fails */
+const FALLBACK_LEVEL_PERMISSIONS = {
   0: { rate_limit: 3, max_count: 5 },
   1: { rate_limit: 20, max_count: 10 },
   2: { rate_limit: -1, max_count: 50 },
@@ -23,12 +23,14 @@ class SubscriptionService {
    * @param {import('./payment-service')} deps.paymentService
    * @param {import('../user/user-repository')} deps.userRepo
    * @param {import('../auth/api-key-repository')} deps.apiKeyRepo
+   * @param {import('../config/settings-repository')} [deps.settingsRepo]
    */
-  constructor({ subscriptionRepo, paymentService, userRepo, apiKeyRepo }) {
+  constructor({ subscriptionRepo, paymentService, userRepo, apiKeyRepo, settingsRepo }) {
     this.subscriptionRepo = subscriptionRepo;
     this.paymentService = paymentService;
     this.userRepo = userRepo;
     this.apiKeyRepo = apiKeyRepo;
+    this.settingsRepo = settingsRepo;
   }
 
   /**
@@ -140,7 +142,8 @@ class SubscriptionService {
    * @param {number} level
    */
   async _syncApiKeyPermissions(userId, level) {
-    const permissions = LEVEL_PERMISSIONS[level];
+    const allPermissions = await this._getLevelPermissions();
+    const permissions = allPermissions[level];
     if (!permissions) return;
 
     const keys = await this.apiKeyRepo.findActiveByUserId(userId);
@@ -161,6 +164,24 @@ class SubscriptionService {
         throw new Error(`Failed to sync API key ${key.id}: ${error.message}`);
       }
     }
+  }
+
+  /**
+   * Read level permissions from settings table, fallback to hardcoded defaults.
+   * @returns {Promise<Object<number, {rate_limit: number, max_count: number}>>}
+   */
+  async _getLevelPermissions() {
+    if (!this.settingsRepo) return FALLBACK_LEVEL_PERMISSIONS;
+    try {
+      const raw = await this.settingsRepo.get('level_permissions');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (_e) {
+      // fall through to fallback
+    }
+    return FALLBACK_LEVEL_PERMISSIONS;
   }
 }
 

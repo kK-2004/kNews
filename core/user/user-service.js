@@ -6,7 +6,8 @@ const HASH_SALT = 'knews_api_key_salt';
 
 const DEFAULT_SOURCE_SCOPE = ['douyin', 'weibo', 'github', 'toutiao'];
 
-const LEVEL_PERMISSIONS = {
+/** Fallback used when settings table is empty or JSON parse fails */
+const FALLBACK_LEVEL_PERMISSIONS = {
   0: { rate_limit: 3, max_count: 5 },
   1: { rate_limit: 20, max_count: 10 },
   2: { rate_limit: -1, max_count: 50 },
@@ -16,10 +17,12 @@ class UserService {
   /**
    * @param {import('./user-repository')} userRepository
    * @param {import('../auth/api-key-repository')} [apiKeyRepo]
+   * @param {import('../config/settings-repository')} [settingsRepo]
    */
-  constructor(userRepository, apiKeyRepo) {
+  constructor(userRepository, apiKeyRepo, settingsRepo) {
     this.userRepository = userRepository;
     this.apiKeyRepo = apiKeyRepo;
+    this.settingsRepo = settingsRepo;
   }
 
   /**
@@ -81,7 +84,8 @@ class UserService {
 
     try {
       const level = user.level ?? 0;
-      const perm = LEVEL_PERMISSIONS[level] || LEVEL_PERMISSIONS[0];
+      const levelPermissions = await this._getLevelPermissions();
+      const perm = levelPermissions[level] || levelPermissions[0];
       const rawKey = `knews_${crypto.randomBytes(24).toString('hex')}`;
       const keyHash = crypto.createHash('sha256').update(String(rawKey) + HASH_SALT).digest('hex');
       const displayName = user.nickname?.trim() || `用户${user.id}`;
@@ -101,6 +105,24 @@ class UserService {
     } catch (err) {
       console.error('[UserService] Failed to create default API key:', err.message);
     }
+  }
+
+  /**
+   * Read level permissions from settings table, fallback to hardcoded defaults.
+   * @returns {Promise<Object<number, {rate_limit: number, max_count: number}>>}
+   */
+  async _getLevelPermissions() {
+    if (!this.settingsRepo) return FALLBACK_LEVEL_PERMISSIONS;
+    try {
+      const raw = await this.settingsRepo.get('level_permissions');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (_e) {
+      // fall through to fallback
+    }
+    return FALLBACK_LEVEL_PERMISSIONS;
   }
 }
 

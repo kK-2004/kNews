@@ -4,11 +4,31 @@ const crypto = require('node:crypto');
 
 const HASH_SALT = 'knews_api_key_salt';
 
-const LEVEL_PERMISSIONS = {
+/** Fallback used when settings table is empty or JSON parse fails */
+const FALLBACK_LEVEL_PERMISSIONS = {
   0: { rate_limit: 3, max_count: 5 },
   1: { rate_limit: 20, max_count: 10 },
   2: { rate_limit: -1, max_count: 50 },
 };
+
+/**
+ * Read level permissions from settings table, fallback to hardcoded defaults.
+ * @param {import('../../core/config/settings-repository')} [settingsRepo]
+ * @returns {Promise<Object<number, {rate_limit: number, max_count: number}>>}
+ */
+async function getLevelPermissions(settingsRepo) {
+  if (!settingsRepo) return FALLBACK_LEVEL_PERMISSIONS;
+  try {
+    const raw = await settingsRepo.get('level_permissions');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch (_e) {
+    // fall through to fallback
+  }
+  return FALLBACK_LEVEL_PERMISSIONS;
+}
 
 function hashApiKey(apiKey) {
   return crypto.createHash('sha256').update(String(apiKey) + HASH_SALT).digest('hex');
@@ -20,7 +40,7 @@ function hashApiKey(apiKey) {
  * @param {Electron.IpcMain} ipcMain
  * @param {Object} deps
  */
-function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, usageRepo, authContext }) {
+function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, usageRepo, authContext, settingsRepo }) {
   // --- Datasources ---
 
   ipcMain.handle('admin:listDatasources', async () => {
@@ -176,7 +196,8 @@ function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, usageRepo, authCo
 
       // Resolve level permission ceiling
       const userLevel = session.level ?? 0;
-      const levelPerm = LEVEL_PERMISSIONS[userLevel] || LEVEL_PERMISSIONS[0];
+      const levelPermissions = await getLevelPermissions(settingsRepo);
+      const levelPerm = levelPermissions[userLevel] || levelPermissions[0];
       const ceilingRate = levelPerm.rate_limit < 0 ? Infinity : levelPerm.rate_limit;
       const ceilingCount = levelPerm.max_count < 0 ? Infinity : levelPerm.max_count;
 
@@ -322,6 +343,68 @@ function register(ipcMain, { sourceRepo, userRepo, apiKeyRepo, usageRepo, authCo
 
       if (error) throw error;
       return { ok: true, data };
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  // --- Level Permissions ---
+
+  ipcMain.handle('admin:getLevelPermissions', async () => {
+    try {
+      const data = await getLevelPermissions(settingsRepo);
+      return { ok: true, data };
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('admin:updateLevelPermissions', async (_event, payload) => {
+    try {
+      if (!payload || typeof payload !== 'object') {
+        return { error: '参数格式错误' };
+      }
+
+      // Validate each level entry
+      for (const [level, perm] of Object.entries(payload)) {
+        if (!perm || typeof perm !== 'object') return { error: `参数格式错误: level ${level}` };
+        if (typeof perm.rate_limit !== 'number' || typeof perm.max_count !== 'number') {
+          return { error: `参数格式错误: level ${level} 的 rate_limit 和 max_count 必须为数字` };
+        }
+      }
+
+      // Persist to settings table
+      await settingsRepo.set('level_permissions', JSON.stringify(payload));
+
+      // Sync all active API Keys
+      const { data: activeKeys, error: fetchErr } = await apiKeyRepo.supabase
+        .from('api_key')
+        .select('id, user_id, users(level)')
+        .eq('is_active', true);
+
+      if (fetchErr) throw fetchErr;
+
+      const now = new Date().toISOString();
+      for (const key of activeKeys || []) {
+        const userLevel = key.users?.level ?? 0;
+        const perm = payload[userLevel];
+        if (!perm) continue;
+
+        const { error: updateErr } = await apiKeyRepo.supabase
+          .from('api_key')
+          .update({
+            rate_limit: perm.rate_limit,
+            max_count: perm.max_count,
+            updated_at: now,
+          })
+          .eq('id', key.id);
+
+        if (updateErr) {
+          console.error(`[admin] Failed to sync API key ${key.id}:`, updateErr.message);
+        }
+      }
+
+      return { ok: true };
     } catch (err) {
       return { error: err.message };
     }

@@ -68,6 +68,8 @@ contextBridge.exposeInMainWorld("api", {
     updateApiKey: (id, payload) => ipcRenderer.invoke("admin:updateApiKey", id, payload),
     updateApiKeyRateLimit: (id, rateLimitRph) => ipcRenderer.invoke("admin:updateApiKeyRateLimit", id, rateLimitRph),
     getAnalytics: (params) => ipcRenderer.invoke("admin:getAnalytics", params),
+    getLevelPermissions: () => ipcRenderer.invoke("admin:getLevelPermissions"),
+    updateLevelPermissions: (data) => ipcRenderer.invoke("admin:updateLevelPermissions", data),
   },
 
   userActions: {

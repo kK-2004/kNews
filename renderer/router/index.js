@@ -84,6 +84,12 @@ export const routes = [
         name: 'settings-admin-api-keys',
         component: () => import('@/features/settings/components/admin/api-keys-settings.vue'),
         meta: { title: '后台-APIKey' }
+      },
+      {
+        path: 'admin/permissions',
+        name: 'settings-admin-permissions',
+        component: () => import('@/features/settings/components/admin/permissions-settings.vue'),
+        meta: { title: '后台-权益配置' }
       }
     ]
   },
