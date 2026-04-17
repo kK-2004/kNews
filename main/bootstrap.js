@@ -18,6 +18,13 @@ const { sources } = require('../core/scraper/sources');
 const McpServer = require('../core/mcp/mcp-server');
 const LocalCacheRepository = require('../core/cache/local-cache-repository');
 const PreferenceRepository = require('../core/preference/preference-repository');
+const SubscriptionRepository = require('../core/subscription/subscription-repository');
+const PaymentService = require('../core/subscription/payment-service');
+const SubscriptionService = require('../core/subscription/subscription-service');
+const ChatRepository = require('../core/chat/chat-repository');
+const LlmClient = require('../core/chat/llm-client');
+const ChatService = require('../core/chat/chat-service');
+const UsageRepository = require('../core/usage/usage-repository');
 
 /**
  * Application bootstrap – wires every layer together.
@@ -57,10 +64,20 @@ async function bootstrap({ safeStorage, shell }) {
   const apiKeyRepo = new ApiKeyRepository(supabase);
   const settingsRepo = new SettingsRepository(supabase);
   const prefRepo = new PreferenceRepository(supabase, localCache);
+  const usageRepo = new UsageRepository(supabase);
 
   // 5. Services
-  const userService = new UserService(userRepo);
+  const userService = new UserService(userRepo, apiKeyRepo, settingsRepo);
   const sourceService = new SourceService(sourceRepo);
+  const subscriptionRepo = new SubscriptionRepository(supabase);
+  const paymentService = new PaymentService();
+  const subscriptionService = new SubscriptionService({
+    subscriptionRepo,
+    paymentService,
+    userRepo,
+    apiKeyRepo,
+    settingsRepo,
+  });
 
   // 6. ScraperEngine (created before FeedService so we can pass it)
   const scraperEngine = new ScraperEngine({
@@ -72,7 +89,12 @@ async function bootstrap({ safeStorage, shell }) {
 
   const feedService = new FeedService(sourceRepo, feedRepo, scraperEngine);
 
-  // 7. AuthContext + SessionPersistence
+  // 7b. Chat service
+  const chatRepository = new ChatRepository();
+  const llmClient = new LlmClient();
+
+  // AuthContext is created below (step 7), but ChatService needs it.
+  // Create authContext early so ChatService can reference it.
   const sessionPersistence = new SessionPersistence({ safeStorage });
   const clientId = (await settingsRepo.get('github_client_id')) || process.env.GITHUB_CLIENT_ID || '';
   const authContext = new AuthContext({
@@ -82,6 +104,21 @@ async function bootstrap({ safeStorage, shell }) {
     clientId,
     shell,
   });
+
+  const chatService = new ChatService({
+    chatRepository,
+    llmClient,
+    feedService,
+    sourceRepository: sourceRepo,
+    localCache,
+    apiKeyRepo,
+    authContext,
+    prefRepo,
+    mcpServer: null,
+  });
+
+  // 7. AuthContext + SessionPersistence
+  // (sessionPersistence and authContext created above)
 
   // 8. Sync sources to database (for MCP / admin views) — only insert new ones
   console.log('[bootstrap] Syncing sources to database...');
@@ -114,8 +151,10 @@ async function bootstrap({ safeStorage, shell }) {
     sourceService,
     feedService,
     apiKeyRepository: apiKeyRepo,
+    usageRepository: usageRepo,
   });
   await mcpServer.start();
+  chatService.mcpServer = mcpServer;
 
   // 11. Restore session (with expiration check)
   console.log('[bootstrap] Restoring session...');
@@ -123,6 +162,9 @@ async function bootstrap({ safeStorage, shell }) {
     const savedSession = await sessionPersistence.loadValidSession();
     if (savedSession) {
       authContext.session = savedSession;
+      await prefRepo.findByUserId(savedSession.userId).catch((err) => {
+        console.warn('[bootstrap] Failed to warm preference cache:', err.message);
+      });
       console.log('[bootstrap] Session restored.');
     } else {
       console.log('[bootstrap] No valid session found.');
@@ -142,6 +184,7 @@ async function bootstrap({ safeStorage, shell }) {
     settingsRepo,
     userService,
     prefRepo,
+    usageRepo,
     sourceService,
     feedService,
     authContext,
@@ -149,6 +192,8 @@ async function bootstrap({ safeStorage, shell }) {
     scraperEngine,
     mcpServer,
     localCache,
+    subscriptionService,
+    chatService,
   };
 }
 

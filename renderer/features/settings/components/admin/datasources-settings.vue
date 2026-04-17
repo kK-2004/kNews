@@ -12,7 +12,11 @@
       <base-input v-model="keyword" placeholder="搜索数据源名称..." />
     </div>
 
-    <div v-if="filteredDatasources.length === 0" class="empty-state">
+    <div v-if="loading" class="empty-state">
+      <span class="loading-spinner" />
+      <p>加载中…</p>
+    </div>
+    <div v-else-if="filteredDatasources.length === 0" class="empty-state">
       <p>暂无匹配的数据源</p>
     </div>
 
@@ -49,6 +53,7 @@ const adminApi = useAdminApi()
 const keyword = ref('')
 const datasources = ref([])
 const pendingId = ref('')
+const loading = ref(true)
 
 const filteredDatasources = computed(() => {
   return datasources.value.filter((item) => {
@@ -69,13 +74,18 @@ const normalizeEnabled = (value) => {
 }
 
 const load = async () => {
-  const res = await adminApi.listDatasources()
-  datasources.value = Array.isArray(res?.items)
-    ? res.items.map((item) => ({
-      ...item,
-      enabled: normalizeEnabled(item.enabled)
-    }))
-    : []
+  loading.value = true
+  try {
+    const res = await adminApi.listDatasources()
+    datasources.value = Array.isArray(res?.items)
+      ? res.items.map((item) => ({
+        ...item,
+        enabled: normalizeEnabled(item.enabled)
+      }))
+      : []
+  } finally {
+    loading.value = false
+  }
 }
 
 const toggleEnabled = async (source, value) => {
@@ -129,6 +139,23 @@ onMounted(load)
   color: var(--muted);
   text-align: center;
   padding: 2rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.loading-spinner {
+  animation: spin 0.8s linear infinite;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  height: 16px;
+  width: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .empty-state p {
@@ -145,17 +172,19 @@ onMounted(load)
 }
 
 .datasource-item {
+  background: var(--surface-container-low);
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  padding: 0.85rem;
-  transition: border-color 0.16s ease;
+  padding: 0.9rem 1rem;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .datasource-item:hover {
-  border-color: color-mix(in srgb, #0b63ff 30%, var(--border));
+  background: var(--surface-container);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
 }
 
 .meta {
@@ -176,8 +205,8 @@ onMounted(load)
 }
 
 :deep(.datasource-switch) {
-  --el-switch-on-color: #67c23a;
-  --el-switch-off-color: #f56c6c;
+  --el-switch-on-color: var(--primary);
+  --el-switch-off-color: var(--error);
   align-self: flex-start;
 }
 

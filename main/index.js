@@ -17,6 +17,8 @@ const { register: registerUserHandlers } = require('./ipc/user.handler');
 const { register: registerAdminHandlers } = require('./ipc/admin.handler');
 const { register: registerUserActionHandlers } = require('./ipc/user-actions.handler');
 const { register: registerMcpHandlers } = require('./ipc/mcp.handler');
+const { register: registerSubscriptionHandlers } = require('./ipc/subscription.handler');
+const { register: registerChatHandlers } = require('./ipc/chat.handler');
 
 let mainWindow = null;
 let instances = null;
@@ -58,11 +60,12 @@ function focusMainWindow() {
 const PROTOCOL = 'knews';
 
 function registerDeepLinkProtocol() {
-  if (process.defaultApp) {
-    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
-  } else {
-    app.setAsDefaultProtocolClient(PROTOCOL);
+  if (process.defaultApp || process.env.NODE_ENV === 'development') {
+    console.log('[deep-link] Skip protocol registration in development/defaultApp mode');
+    return;
   }
+
+  app.setAsDefaultProtocolClient(PROTOCOL);
 }
 
 async function handleDeepLinkCallback(deepLinkUrl) {
@@ -169,6 +172,7 @@ function registerIpcHandlers(ipcMain, deps) {
     userRepo: deps.userRepo,
     userService: deps.userService,
     prefRepo: deps.prefRepo,
+    apiKeyRepo: deps.apiKeyRepo,
     authContext: deps.authContext,
   });
 
@@ -176,12 +180,24 @@ function registerIpcHandlers(ipcMain, deps) {
     sourceRepo: deps.sourceRepo,
     userRepo: deps.userRepo,
     apiKeyRepo: deps.apiKeyRepo,
+    usageRepo: deps.usageRepo,
+    authContext: deps.authContext,
+    settingsRepo: deps.settingsRepo,
   });
 
   registerUserActionHandlers(ipcMain, {});
 
   registerMcpHandlers(ipcMain, {
     mcpServer: deps.mcpServer,
+  });
+
+  registerSubscriptionHandlers(ipcMain, {
+    subscriptionService: deps.subscriptionService,
+    authContext: deps.authContext,
+  });
+
+  registerChatHandlers(ipcMain, {
+    chatService: deps.chatService,
   });
 }
 

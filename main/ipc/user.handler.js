@@ -14,9 +14,10 @@
  * @param {import('../../core/user/user-repository')} deps.userRepo
  * @param {import('../../core/user/user-service')} deps.userService
  * @param {import('../../core/preference/preference-repository')} deps.prefRepo
+ * @param {import('../../core/auth/api-key-repository')} deps.apiKeyRepo
  * @param {import('../../core/auth/auth-context')} deps.authContext
  */
-function register(ipcMain, { userRepo, userService, prefRepo, authContext }) {
+function register(ipcMain, { userRepo, userService, prefRepo, apiKeyRepo, authContext }) {
   ipcMain.handle('user:profile', async (_event, userId) => {
     try {
       // The preload currently sends no argument for profile.
@@ -25,7 +26,9 @@ function register(ipcMain, { userRepo, userService, prefRepo, authContext }) {
       if (userId) {
         return await userRepo.findById(userId);
       }
-      return null;
+      const session = authContext.getSession();
+      if (!session?.userId) return null;
+      return await userRepo.findById(session.userId);
     } catch (err) {
       return { error: err.message };
     }
@@ -58,12 +61,43 @@ function register(ipcMain, { userRepo, userService, prefRepo, authContext }) {
     try {
       const session = authContext.getSession();
       if (!session?.userId) return { ok: false, error: 'Not authenticated' };
-      await prefRepo.upsert(session.userId, preferences);
+      const normalizedPreferences = await normalizePreferencesForSave(session.userId, preferences, apiKeyRepo);
+      await prefRepo.upsert(session.userId, normalizedPreferences);
       return { ok: true };
     } catch (err) {
       return { error: err.message };
     }
   });
+}
+
+async function normalizePreferencesForSave(userId, preferences, apiKeyRepo) {
+  if (!preferences || typeof preferences !== 'object') {
+    return preferences;
+  }
+
+  const rawPerSourceCount = preferences?.assistant?.perSourceCount;
+  if (rawPerSourceCount === undefined) {
+    return preferences;
+  }
+
+  const normalizedPerSourceCount = Math.floor(Number(rawPerSourceCount));
+  if (!Number.isFinite(normalizedPerSourceCount) || normalizedPerSourceCount < 1) {
+    throw new Error('perSourceCount 必须是大于 0 的整数');
+  }
+
+  const defaultKey = await apiKeyRepo?.findDefaultByUserId?.(userId);
+  const maxCount = Math.floor(Number(defaultKey?.max_count));
+  if (Number.isFinite(maxCount) && maxCount > 0 && normalizedPerSourceCount > maxCount) {
+    throw new Error(`perSourceCount 不能超过当前 default key 的 max_count（${maxCount}）`);
+  }
+
+  return {
+    ...preferences,
+    assistant: {
+      ...(preferences.assistant || {}),
+      perSourceCount: normalizedPerSourceCount,
+    },
+  };
 }
 
 module.exports = { register };

@@ -1,10 +1,10 @@
 <template>
   <form class="source-form" @submit.prevent="submit">
-    <base-input v-model="model.name" label="Name" placeholder="Source name" />
-    <base-input v-model="model.url" label="URL" placeholder="https://..." />
+    <base-input v-model="model.name" label="名称" placeholder="来源名称" />
+    <base-input v-model="model.url" label="链接" placeholder="https://..." />
     <div class="actions">
-      <base-button type="submit">{{ model.id ? 'Update' : 'Add' }}</base-button>
-      <base-button variant="secondary" @click="$emit('cancel')">Cancel</base-button>
+      <base-button type="submit">{{ model.id ? '更新' : '新增' }}</base-button>
+      <base-button variant="secondary" @click="$emit('cancel')">取消</base-button>
     </div>
   </form>
 </template>

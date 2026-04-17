@@ -167,8 +167,8 @@ class ScraperEngine {
     const disabledSourceIds = [];
 
     for (const source of this.sources.values()) {
-      // DB status takes precedence; fall back to local enabled field
-      const isEnabled = dbSourceMap ? dbSourceMap.get(source.id) !== false : source.enabled !== false;
+      // When DB is available, only explicit enabled=true may pass.
+      const isEnabled = dbSourceMap ? dbSourceMap.get(source.id) === true : source.enabled !== false;
       if (isEnabled) {
         enabledSources.push(source);
       } else {
@@ -214,13 +214,14 @@ class ScraperEngine {
     if (this.sourceRepository) {
       try {
         const dbSource = await this.sourceRepository.findById(sourceId);
-        if (dbSource && dbSource.enabled === false) {
+        if (!dbSource || dbSource.enabled !== true) {
           const cached = this.localCache && this.localCache.read(sourceId);
           if (cached) {
             await this.feedRepository.deleteCache(sourceId);
             console.log(`[ScraperEngine] Cleaned cache for disabled source: ${sourceId}`);
           }
-          return { sourceId, count: 0, error: null, disabled: true };
+          console.log(`[ScraperEngine] Skipped disabled source: ${sourceId}`);
+          return { sourceId, count: 0, error: null, disabled: true, skipped: true };
         }
       } catch (err) {
         console.error(`[ScraperEngine] Failed to check source status: ${err.message}`);

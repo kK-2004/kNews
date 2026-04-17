@@ -1,6 +1,6 @@
 <template>
   <section>
-    <h2>Source {{ id }}</h2>
+    <h2>来源 {{ id }}</h2>
   </section>
 </template>
 

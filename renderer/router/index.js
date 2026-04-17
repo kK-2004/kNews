@@ -1,4 +1,6 @@
 import { createMemoryHistory, createRouter, createWebHistory, createWebHashHistory } from 'vue-router'
+import { useToast } from '@/shared/composables/useToast'
+import { useUserStore } from '@/stores/use-user-store'
 
 export const routes = [
   {
@@ -13,7 +15,7 @@ export const routes = [
     path: '/',
     name: 'home',
     component: () => import('@/features/home/index.vue'),
-    meta: { title: 'Home', prefetch: true }
+    meta: { title: '首页', prefetch: true }
   },
   {
     path: '/sources',
@@ -32,7 +34,19 @@ export const routes = [
     name: 'reader-detail',
     component: () => import('@/features/reader/index.vue'),
     props: true,
-    meta: { title: 'Reader' }
+    meta: { title: '阅读器' }
+  },
+  {
+    path: '/subscribe',
+    name: 'subscribe',
+    component: () => import('@/features/subscribe/subscribe-page.vue'),
+    meta: { title: '订阅方案' }
+  },
+  {
+    path: '/assistant',
+    name: 'assistant',
+    component: () => import('@/features/assistant/index.vue'),
+    meta: { title: 'K-Ai 对话', requiresAuth: true }
   },
   {
     path: '/settings',
@@ -70,6 +84,12 @@ export const routes = [
         name: 'settings-admin-api-keys',
         component: () => import('@/features/settings/components/admin/api-keys-settings.vue'),
         meta: { title: '后台-APIKey' }
+      },
+      {
+        path: 'admin/permissions',
+        name: 'settings-admin-permissions',
+        component: () => import('@/features/settings/components/admin/permissions-settings.vue'),
+        meta: { title: '后台-权益配置' }
       }
     ]
   },
@@ -77,7 +97,7 @@ export const routes = [
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/features/not-found/index.vue'),
-    meta: { title: 'Not Found' }
+    meta: { title: '页面不存在' }
   }
 ]
 
@@ -94,7 +114,13 @@ export function createAppRouter({ ssr = false, base = import.meta.env.BASE_URL }
 
   router.beforeEach((to) => {
     if (to.meta?.requiresAuth) {
-      return { name: 'home' }
+      const userStore = useUserStore()
+      const isLoggedIn = Boolean(userStore.authToken || userStore.profile)
+      if (!isLoggedIn) {
+        const { warning } = useToast()
+        warning('请登录', { timeout: 3000 })
+        return false
+      }
     }
     return true
   })

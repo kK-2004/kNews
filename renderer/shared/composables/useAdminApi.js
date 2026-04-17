@@ -16,6 +16,8 @@ export function useAdminApi() {
   const updateApiKeyRateLimit = (id, rateLimitRph) => adminApi.updateApiKeyRateLimit(id, rateLimitRph)
 
   const getAnalytics = (params = {}) => adminApi.getAnalytics(params)
+  const getLevelPermissions = () => adminApi.getLevelPermissions()
+  const updateLevelPermissions = (data) => adminApi.updateLevelPermissions(data)
 
   return {
     listDatasources,
@@ -29,6 +31,8 @@ export function useAdminApi() {
     listApiKeys,
     deleteApiKey,
     updateApiKeyRateLimit,
-    getAnalytics
+    getAnalytics,
+    getLevelPermissions,
+    updateLevelPermissions
   }
 }

@@ -23,10 +23,9 @@ class SessionPersistence {
   async saveSession(session) {
     const json = JSON.stringify(session);
     const encrypted = this.safeStorage.encryptString(json);
-    const buffer = Buffer.from(encrypted, 'utf8');
 
     await fs.promises.mkdir(this.sessionDir, { recursive: true });
-    await fs.promises.writeFile(this.sessionFile, buffer);
+    await fs.promises.writeFile(this.sessionFile, encrypted);
   }
 
   /**
@@ -36,8 +35,7 @@ class SessionPersistence {
   async loadSession() {
     try {
       const buffer = await fs.promises.readFile(this.sessionFile);
-      const encrypted = buffer.toString('utf8');
-      const decrypted = this.safeStorage.decryptString(encrypted);
+      const decrypted = this.safeStorage.decryptString(buffer);
       return JSON.parse(decrypted);
     } catch {
       return null;

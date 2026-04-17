@@ -10,10 +10,16 @@ class SourceRepository {
    * Find all sources.
    * @returns {Promise<Object[]>}
    */
-  async findAll() {
-    const { data, error } = await this.supabase
+  async findAll(enabledOnly = false) {
+    let query = this.supabase
       .from('source')
       .select('*');
+
+    if (enabledOnly) {
+      query = query.eq('enabled', true);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       throw new Error(`Failed to find all sources: ${error.message}`);

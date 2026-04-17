@@ -100,6 +100,9 @@ export const adminApi = {
   listDatasources() {
     return ensureApi().admin.listDatasources().catch(wrapError)
   },
+  createApiKey(payload) {
+    return ensureApi().admin.createApiKey(payload).catch(wrapError)
+  },
   createDatasource(payload) {
     return ensureApi().admin.createDatasource(payload).catch(wrapError)
   },
@@ -127,10 +130,19 @@ export const adminApi = {
   deleteApiKey(id) {
     return ensureApi().admin.deleteApiKey(id).catch(wrapError)
   },
+  updateApiKey(id, payload) {
+    return ensureApi().admin.updateApiKey(id, payload).catch(wrapError)
+  },
   updateApiKeyRateLimit(id, rateLimitRph) {
     return ensureApi().admin.updateApiKeyRateLimit(id, rateLimitRph).catch(wrapError)
   },
   getAnalytics(params) {
     return ensureApi().admin.getAnalytics(params).catch(wrapError)
+  },
+  getLevelPermissions() {
+    return ensureApi().admin.getLevelPermissions().catch(wrapError)
+  },
+  updateLevelPermissions(data) {
+    return ensureApi().admin.updateLevelPermissions(data).catch(wrapError)
   }
 }

@@ -3,9 +3,21 @@
     <p class="access-denied">仅管理员可访问 API Key 管理</p>
   </section>
   <section v-else class="admin-apikeys">
-    <header class="section-header">
-      <h3>API Key 管理</h3>
-      <p>查看和管理所有用户的 API Key 使用情况</p>
+    <header class="page-header">
+      <div>
+        <h3 class="page-title">API 分析</h3>
+        <p class="page-subtitle">监控系统调用趋势、Key 活跃情况与整体访问负载。</p>
+      </div>
+      <div class="page-actions">
+        <span class="system-status">
+          <span class="status-pulse"></span>
+          系统正常
+        </span>
+        <base-button @click="loadAnalytics">
+          <span class="i-tabler-refresh" style="font-size:0.9rem" aria-hidden="true"></span>
+          刷新
+        </base-button>
+      </div>
     </header>
 
     <div class="filter-bar">
@@ -32,77 +44,186 @@
           />
         </el-select>
       </div>
-      <base-button @click="loadAnalytics">刷新</base-button>
     </div>
 
     <div class="stats-grid">
       <div class="stat-card">
-        <p class="stat-label">总 API Keys</p>
+        <div class="stat-top">
+          <p class="stat-label">API Key 总数</p>
+          <span class="i-tabler-key stat-icon" aria-hidden="true"></span>
+        </div>
         <p class="stat-value">{{ apikeys.length }}</p>
       </div>
       <div class="stat-card">
-        <p class="stat-label">总调用次数</p>
+        <div class="stat-top">
+          <p class="stat-label">总调用次数</p>
+          <span class="i-tabler-activity stat-icon" aria-hidden="true"></span>
+        </div>
         <p class="stat-value">{{ totalCalls }}</p>
       </div>
       <div class="stat-card">
-        <p class="stat-label">活跃 Keys</p>
+        <div class="stat-top">
+          <p class="stat-label">活跃 Key</p>
+          <span class="i-tabler-wifi stat-icon" aria-hidden="true"></span>
+        </div>
         <p class="stat-value">{{ activeKeys }}</p>
       </div>
     </div>
 
-    <div class="hourly-section">
-      <h4>每小时调用趋势</h4>
-      <div v-if="hourlySeries.length === 0" class="empty-state">
-        <p>暂无数据</p>
-      </div>
-      <div v-else class="line-chart-card">
-        <div class="chart-hint">
-          <span>单位：调用次数</span>
-          <span>时区：{{ localTimeZone }}</span>
-        </div>
-        <div class="line-chart-wrap">
-          <div ref="chartEl" class="line-chart" role="img" aria-label="API 每小时调用趋势图" />
-        </div>
-      </div>
-    </div>
-
-    <div v-if="leaderboard.length > 0" class="leaderboard-section">
-      <h4>每小时调用榜单（{{ formattedLeaderboardHour || '-' }}）</h4>
-      <div class="leaderboard-list">
-        <div v-for="(item, index) in leaderboard" :key="item.id" class="leaderboard-item">
-          <span :class="['rank-badge', index < 3 ? 'top' : '']">{{ index + 1 }}</span>
-          <div class="leaderboard-main">
-            <p class="leaderboard-name">{{ item.apiKeyName || '未命名' }}</p>
-            <p class="leaderboard-user">{{ item.username }}</p>
+    <div class="mid-row">
+      <div class="hourly-section">
+        <div class="section-header-row">
+          <h4>每小时调用趋势</h4>
+          <div class="time-tabs">
+            <button
+              v-for="opt in dateOptions"
+              :key="opt.value"
+              :class="['time-tab', dateRange === opt.value ? 'active' : '']"
+              @click="dateRange = opt.value"
+            >{{ opt.label }}</button>
           </div>
-          <p class="leaderboard-calls">{{ item.calls || 0 }} 次</p>
+        </div>
+        <div v-if="hourlySeries.length === 0" class="empty-state">
+          <p>暂无小时级日志</p>
+        </div>
+        <div v-else class="line-chart-card">
+          <div class="chart-hint">
+            <span>单位：调用次数</span>
+            <span>时区：{{ localTimeZone }}</span>
+          </div>
+          <div class="line-chart-wrap">
+            <div ref="chartEl" class="line-chart" role="img" aria-label="API 每小时调用趋势图" />
+          </div>
+        </div>
+      </div>
+
+      <div class="ranking-section">
+        <h4 class="ranking-title">
+          <span class="i-tabler-flame ranking-icon" aria-hidden="true"></span>
+          热门 Key 排行
+        </h4>
+        <div v-if="leaderboard.length > 0" class="ranking-list">
+          <template v-for="(item, index) in leaderboard" :key="item.id">
+            <div class="ranking-item">
+              <div class="ranking-info">
+                <span class="ranking-name">{{ item.apiKeyName || '未命名' }}</span>
+                <span class="ranking-meta">{{ formatNumber(item.calls || 0) }} 次调用</span>
+              </div>
+              <div class="ranking-bar-track">
+                <div class="ranking-bar-fill" :style="{ width: getBarWidth(item.calls) }"></div>
+              </div>
+            </div>
+            <div v-if="index < leaderboard.length - 1" class="ranking-divider"></div>
+          </template>
+        </div>
+        <div v-else class="ranking-empty">
+          <span class="i-tabler-chart-bar-off ranking-empty-icon" aria-hidden="true"></span>
+          <p>{{ loading ? '正在加载排行数据…' : '暂无热门 Key 数据' }}</p>
         </div>
       </div>
     </div>
 
-    <div class="keys-section">
-      <h4>API Key 列表</h4>
-      <div v-if="filteredApiKeys.length === 0" class="empty-state">
+    <div class="table-section">
+      <div class="table-header">
+        <h4>活跃客户端 Key</h4>
+        <div class="table-search">
+          <span class="i-tabler-search table-search-icon" aria-hidden="true"></span>
+          <input
+            v-model="searchQuery"
+            class="table-search-input"
+            placeholder="搜索 Key 名称或用户"
+            type="text"
+          />
+        </div>
+      </div>
+      <div v-if="loading" class="empty-state">
+        <span class="loading-spinner" />
+        <p>加载中…</p>
+      </div>
+      <div v-else-if="filteredApiKeys.length === 0" class="empty-state">
         <p>暂无 API Key</p>
       </div>
-      <div v-else class="keys-list">
-        <div v-for="key in filteredApiKeys" :key="key.id" class="key-card">
-          <div class="key-main">
-            <p class="key-name">{{ key.name || '未命名 Key' }}</p>
-            <p class="key-user">用户：{{ key.username || '未知' }}</p>
-            <p class="key-code">{{ key.key }}</p>
-            <div class="key-stats">
-              <span class="key-stat">限流: {{ key.rateLimitRph || '-' }}/h</span>
-              <span class="key-stat">最后: {{ formatLastCall(key.lastCallTime) }}</span>
-            </div>
-          </div>
-          <div class="key-actions">
-            <base-button size="sm" @click="editRateLimit(key)">限流</base-button>
-            <base-button size="sm" variant="danger" @click="deleteAPIKey(key)">删除</base-button>
-          </div>
+      <template v-else>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Key 名称</th>
+                <th>状态</th>
+                <th class="text-right">调用次数</th>
+                <th class="text-right">额度</th>
+                <th class="text-right">最近使用</th>
+                <th class="text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="key in filteredApiKeys" :key="key.id">
+                <td>
+                  <div class="key-cell">
+                    <div class="key-avatar">{{ (key.name || 'K')[0].toUpperCase() }}</div>
+                    <div>
+                      <div class="key-cell-name">
+                        {{ key.name || '未命名 Key' }}
+                        <span v-if="key.is_default" class="badge-default">内置</span>
+                      </div>
+                      <div class="key-cell-code">{{ key.username || '未知' }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <span :class="['status-badge', getKeyStatus(key) === 'active' ? 'active' : 'inactive']">
+                    <span class="status-dot"></span>
+                    {{ getKeyStatus(key) === 'active' ? '活跃' : '空闲' }}
+                  </span>
+                </td>
+                <td class="text-right font-mono">{{ formatNumber(Number(key.callCount || key.call_count || 0)) }}</td>
+                <td class="text-right">
+                  <div class="quota-cell">
+                    <span>{{ getQuotaPercent(key) }}%</span>
+                    <div class="quota-bar-track">
+                      <div class="quota-bar-fill" :style="{ width: getQuotaPercent(key) + '%', background: getQuotaColor(key) }"></div>
+                    </div>
+                  </div>
+                </td>
+                <td class="text-right font-mono text-xs">{{ formatLastCall(key.lastCallTime) }}</td>
+                <td class="text-center">
+                  <div class="row-actions">
+                    <button class="row-action-btn" title="限流" @click="editRateLimit(key)">
+                      <span class="i-tabler-adjustments" aria-hidden="true"></span>
+                    </button>
+                    <button v-if="!key.is_default" class="row-action-btn danger" title="删除" @click="deleteAPIKey(key)">
+                      <span class="i-tabler-trash" aria-hidden="true"></span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span class="table-footer-info">当前显示 {{ filteredApiKeys.length }} / {{ apikeys.length }} 个 Key</span>
+        </div>
+      </template>
+    </div>
+
+    <base-modal :open="showRateLimitModal" @close="closeRateLimitModal">
+      <template #title>
+        <h3 class="modal-title">设置限流</h3>
+      </template>
+      <div class="rate-limit-modal">
+        <p class="rate-limit-desc">
+          为 <strong>{{ editingKey?.name || '未命名 Key' }}</strong> 设置每小时请求上限。
+        </p>
+        <label class="rate-limit-field">
+          <span>请求/小时</span>
+          <input v-model.number="editingRateLimit" type="number" min="1" step="1">
+        </label>
+        <div class="modal-actions">
+          <base-button variant="secondary" @click="closeRateLimitModal">取消</base-button>
+          <base-button @click="saveRateLimit">保存</base-button>
         </div>
       </div>
-    </div>
+    </base-modal>
   </section>
 </template>
 
@@ -110,6 +231,7 @@
 import * as echarts from 'echarts'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import BaseButton from '@/shared/components/base-button.vue'
+import BaseModal from '@/shared/components/base-modal.vue'
 import { useAdminMode } from '@/shared/composables/useAdminMode'
 import { useAdminApi } from '@/shared/composables/useAdminApi'
 
@@ -122,20 +244,41 @@ const adminApi = useAdminApi()
 
 const dateRange = ref('7days')
 const selectedKey = ref('')
+const searchQuery = ref('')
 const apikeys = ref([])
+const loading = ref(true)
 const hourlySeries = ref([])
 const leaderboard = ref([])
 const leaderboardHour = ref('')
 const chartEl = ref(null)
 let usageChart = null
+const showRateLimitModal = ref(false)
+const editingKey = ref(null)
+const editingRateLimit = ref(100)
+
+const dateOptions = [
+  { label: '24H', value: '1day' },
+  { label: '7D', value: '7days' },
+  { label: '30D', value: '30days' }
+]
 
 const filteredApiKeys = computed(() => {
-  if (!selectedKey.value) return apikeys.value
-  return apikeys.value.filter((item) => item.id === selectedKey.value)
+  let list = apikeys.value
+  if (selectedKey.value) {
+    list = list.filter((item) => item.id === selectedKey.value)
+  }
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase()
+    list = list.filter((k) =>
+      (k.name || '').toLowerCase().includes(q) ||
+      (k.username || '').toLowerCase().includes(q)
+    )
+  }
+  return list
 })
 
 const totalCalls = computed(() => {
-  return hourlySeries.value.reduce((sum, item) => sum + (item.calls || 0), 0)
+  return apikeys.value.reduce((sum, item) => sum + Number(item.callCount || item.call_count || 0), 0)
 })
 
 const activeKeys = computed(() => {
@@ -147,7 +290,7 @@ const activeKeys = computed(() => {
   }).length
 })
 
-const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local'
+  const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '本地时区'
 
 const parseUtcHourString = (value) => {
   const text = String(value || '').trim()
@@ -262,16 +405,52 @@ const resizeChart = () => {
 }
 
 const getRangeTs = () => {
-  const days = dateRange.value === '30days' ? 30 : 7
+  const days = dateRange.value === '30days' ? 30 : dateRange.value === '1day' ? 1 : 7
   return {
     start: Date.now() - days * 24 * 60 * 60 * 1000,
     end: Date.now()
   }
 }
 
+const formatNumber = (n) => {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k'
+  return String(n)
+}
+
+const getBarWidth = (calls) => {
+  const maxCalls = Math.max(1, ...leaderboard.value.map((i) => i.calls || 0))
+  return Math.round(((calls || 0) / maxCalls) * 100) + '%'
+}
+
+const getKeyStatus = (key) => {
+  if (!key.lastCallTime) return 'inactive'
+  const diff = Date.now() - new Date(key.lastCallTime).getTime()
+  return diff < 24 * 60 * 60 * 1000 ? 'active' : 'inactive'
+}
+
+const getQuotaPercent = (key) => {
+  const limit = Number(key.rateLimitRph || 0)
+  const used = Number(key.callCount || key.call_count || 0)
+  if (!limit) return 0
+  return Math.min(100, Math.round((used / limit) * 100))
+}
+
+const getQuotaColor = (key) => {
+  const pct = getQuotaPercent(key)
+  if (pct >= 90) return 'var(--error)'
+  if (pct >= 70) return 'var(--tertiary)'
+  return 'var(--primary)'
+}
+
 const loadApiKeys = async () => {
-  const res = await adminApi.listApiKeys({ keyId: selectedKey.value })
-  apikeys.value = Array.isArray(res?.keys) ? res.keys : []
+  loading.value = true
+  try {
+    const res = await adminApi.listApiKeys({ all: true, keyId: selectedKey.value })
+    apikeys.value = Array.isArray(res?.keys) ? res.keys : []
+  } finally {
+    loading.value = false
+  }
 }
 
 const loadAnalytics = async () => {
@@ -302,6 +481,12 @@ const formatLastCall = (value) => {
   return date.toLocaleDateString('zh-CN')
 }
 
+const formatRateLimit = (value) => {
+  const rate = Number(value)
+  if (!Number.isFinite(rate) || rate < 0) return '不限'
+  return `${rate}/h`
+}
+
 const deleteAPIKey = async (key) => {
   if (!confirm(`确定要删除 API Key "${key.name || '未命名'}" 吗？`)) {
     return
@@ -319,15 +504,25 @@ const deleteAPIKey = async (key) => {
 }
 
 const editRateLimit = async (key) => {
-  const currentLimit = key.rateLimitRph || 100
-  const input = prompt(`设置限流（请求/小时）：\n当前：${currentLimit}`, String(currentLimit))
+  editingKey.value = key
+  editingRateLimit.value = Math.max(1, Number(key.rateLimitRph || 100))
+  showRateLimitModal.value = true
+}
 
-  if (input === null) return
+const closeRateLimitModal = () => {
+  showRateLimitModal.value = false
+  editingKey.value = null
+  editingRateLimit.value = 100
+}
 
-  const newLimit = Math.max(1, Number(input) || 100)
+const saveRateLimit = async () => {
+  if (!editingKey.value) return
+  const newLimit = Math.max(1, Number(editingRateLimit.value) || 100)
   try {
-    await adminApi.updateApiKeyRateLimit(key.id, newLimit)
-    key.rateLimitRph = newLimit
+    await adminApi.updateApiKeyRateLimit(editingKey.value.id, newLimit)
+    editingKey.value.rateLimitRph = newLimit
+    closeRateLimitModal()
+    await loadApiKeys()
   } catch (err) {
     console.error('更新限流失败:', err)
     alert('更新失败，请稍后重试')
@@ -375,23 +570,61 @@ onBeforeUnmount(() => {
 <style scoped>
 .admin-apikeys {
   display: grid;
-  gap: 1.2rem;
+  gap: 1.5rem;
 }
 
-.section-header h3 {
-  font-size: 1.15rem;
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.page-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   margin: 0;
+  color: var(--text);
 }
 
-.section-header p {
-  color: var(--muted);
+.page-subtitle {
+  color: var(--on-surface-variant);
   font-size: 0.85rem;
   margin: 0.3rem 0 0;
 }
 
-.access-denied {
-  color: var(--muted);
-  margin: 0;
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.system-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+  background: var(--surface-container);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent);
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius);
+}
+
+.status-pulse {
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: var(--tertiary);
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 .filter-bar {
@@ -399,7 +632,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 0.8rem;
-  justify-content: space-between;
 }
 
 .filter-inputs {
@@ -415,205 +647,541 @@ onBeforeUnmount(() => {
 
 .stats-grid {
   display: grid;
-  gap: 0.8rem;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .stat-card {
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  padding: 0.9rem;
-  text-align: center;
+  background: var(--surface-container-high);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
+  transition: background 0.3s;
+}
+
+.stat-card:hover {
+  background: color-mix(in srgb, var(--primary-container) 8%, var(--surface-container-high));
+}
+
+.stat-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.stat-icon {
+  color: color-mix(in srgb, var(--primary) 50%, transparent);
+  font-size: 1.25rem;
 }
 
 .stat-label {
-  color: var(--muted);
-  font-size: 0.8rem;
-  margin: 0 0 0.3rem;
+  color: var(--on-surface-variant);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
 }
 
 .stat-value {
-  font-size: 1.5rem;
+  font-size: 2.5rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 0;
+  color: var(--text);
+}
+
+/* ---- Mid row: chart + ranking side by side ---- */
+.mid-row {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: 2fr 1fr;
+}
+
+.hourly-section {
+  background: var(--surface-container-low);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 15%, transparent);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.section-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.section-header-row h4 {
+  font-size: 0.95rem;
   font-weight: 700;
   margin: 0;
 }
 
-.hourly-section {
-  display: grid;
-  gap: 0.6rem;
+.time-tabs {
+  display: flex;
+  gap: 0.25rem;
 }
 
-.hourly-section h4 {
-  font-size: 1rem;
-  margin: 0;
+.time-tab {
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.25rem 0.6rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+.time-tab.active {
+  background: var(--surface-container-high);
+  color: var(--text);
+}
+
+.time-tab:hover:not(.active) {
+  color: var(--text);
 }
 
 .empty-state {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   padding: 2rem 0;
   text-align: center;
 }
 
 .empty-state p {
   margin: 0;
+  font-size: 0.85rem;
 }
 
 .line-chart-card {
-  border: 1px solid var(--border);
-  border-radius: 0.9rem;
-  padding: 0.8rem 0.9rem 0.6rem;
-  background:
-    radial-gradient(120% 90% at 50% -10%, color-mix(in srgb, #80a5ff 16%, transparent), transparent 70%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, #eef3ff), var(--surface));
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .chart-hint {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   display: flex;
   flex-wrap: wrap;
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   justify-content: space-between;
   margin-bottom: 0.45rem;
+  opacity: 0.7;
 }
 
 .line-chart-wrap {
-  height: 260px;
-  width: 100%;
+  flex: 1;
+  min-height: 200px;
 }
 
 .line-chart {
   display: block;
   height: 100%;
   width: 100%;
-  min-height: 240px;
+  min-height: 200px;
 }
 
-.leaderboard-section {
-  display: grid;
-  gap: 0.6rem;
+/* ---- Ranking section ---- */
+.ranking-section {
+  background: var(--surface-container-low);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 15%, transparent);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
 }
 
-.leaderboard-section h4 {
-  font-size: 1rem;
-  margin: 0;
-}
-
-.leaderboard-list {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.leaderboard-item {
-  align-items: center;
-  border: 1px solid var(--border);
-  border-radius: 0.6rem;
-  display: grid;
-  gap: 0.6rem;
-  grid-template-columns: auto 1fr auto;
-  padding: 0.6rem 0.8rem;
-}
-
-.rank-badge {
-  align-items: center;
-  background: color-mix(in srgb, var(--muted) 20%, transparent);
-  border-radius: 999px;
-  color: var(--muted);
-  display: inline-flex;
-  font-size: 0.75rem;
+.ranking-title {
+  font-size: 0.95rem;
   font-weight: 700;
-  height: 24px;
+  margin: 0 0 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ranking-icon {
+  color: var(--primary);
+  font-size: 1.1rem;
+}
+
+.ranking-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.ranking-empty {
+  min-height: 12rem;
+  display: flex;
+  flex: 1;
+  align-items: center;
   justify-content: center;
-  width: 24px;
+  flex-direction: column;
+  gap: 0.55rem;
+  color: var(--on-surface-variant);
+  text-align: center;
 }
 
-.rank-badge.top {
-  background: color-mix(in srgb, #f59e0b 30%, transparent);
-  color: #f59e0b;
+.ranking-empty p {
+  margin: 0;
+  font-size: 0.82rem;
 }
 
-.leaderboard-main {
+.ranking-empty-icon {
+  font-size: 1.4rem;
+  opacity: 0.72;
+}
+
+.ranking-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.5rem;
+  border-radius: var(--radius);
+  transition: background 0.15s;
+  cursor: default;
+}
+
+.ranking-item:hover {
+  background: color-mix(in srgb, var(--surface-container) 50%, transparent);
+}
+
+.ranking-info {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
-.leaderboard-name {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin: 0;
-}
-
-.leaderboard-user {
-  color: var(--muted);
-  font-size: 0.75rem;
-  margin: 0.1rem 0 0;
-}
-
-.leaderboard-calls {
+.ranking-name {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 500;
+  color: var(--text);
 }
 
-.keys-section {
-  display: grid;
-  gap: 0.6rem;
+.ranking-meta {
+  font-size: 0.72rem;
+  color: var(--on-surface-variant);
 }
 
-.keys-section h4 {
-  font-size: 1rem;
-  margin: 0;
-}
-
-.keys-list {
-  display: grid;
-  gap: 0.6rem;
-}
-
-.key-card {
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  display: grid;
-  gap: 0.7rem;
-  grid-template-columns: 1fr auto;
-  padding: 0.8rem;
-}
-
-.key-name {
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin: 0;
-}
-
-.key-user {
-  color: var(--muted);
-  font-size: 0.8rem;
-  margin: 0.2rem 0;
-}
-
-.key-code {
-  background: color-mix(in srgb, var(--muted) 10%, transparent);
-  border-radius: 0.4rem;
-  font-family: monospace;
-  font-size: 0.75rem;
-  margin: 0.3rem 0;
+.ranking-bar-track {
+  width: 4rem;
+  height: 4px;
+  background: var(--surface-container-highest);
+  border-radius: 999px;
   overflow: hidden;
-  padding: 0.3rem 0.5rem;
-  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.ranking-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 999px;
+  transition: width 0.3s;
+}
+
+.ranking-divider {
+  height: 1px;
+  background: color-mix(in srgb, var(--outline-variant) 10%, transparent);
+}
+
+/* ---- Table section ---- */
+.table-section {
+  background: var(--surface-container-low);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 15%, transparent);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 10%, transparent);
+}
+
+.table-header h4 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.table-search {
+  position: relative;
+}
+
+.table-search-icon {
+  position: absolute;
+  left: 0.65rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--on-surface-variant);
+  font-size: 0.9rem;
+}
+
+.table-search-input {
+  background: var(--surface-container);
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 0.82rem;
+  padding: 0.4rem 0.7rem 0.4rem 2rem;
+  width: 12rem;
+  transition: box-shadow 0.15s;
+}
+
+.table-search-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  text-align: left;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.data-table thead tr {
+  background: color-mix(in srgb, var(--surface-container) 30%, transparent);
+}
+
+.data-table th {
+  padding: 0.65rem 1rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
   white-space: nowrap;
 }
 
-.key-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
+.data-table td {
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 5%, transparent);
+  vertical-align: middle;
 }
 
-.key-stat {
-  color: var(--muted);
+.data-table tbody tr {
+  transition: background 0.15s;
+}
+
+.data-table tbody tr:hover {
+  background: color-mix(in srgb, var(--surface-container) 20%, transparent);
+}
+
+.data-table .text-right { text-align: right; }
+.data-table .text-center { text-align: center; }
+.data-table .font-mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem; }
+.data-table .text-xs { font-size: 0.75rem; }
+
+.key-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.key-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: var(--surface-container-highest);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 15%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.key-cell-name {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.key-cell-code {
+  font-size: 0.72rem;
+  color: var(--on-surface-variant);
+  margin-top: 0.1rem;
+}
+
+.badge-default {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  vertical-align: middle;
+  margin-left: 0.3rem;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius);
+}
+
+.status-badge.active {
+  background: color-mix(in srgb, var(--tertiary-container) 30%, transparent);
+  color: var(--tertiary);
+  border: 1px solid color-mix(in srgb, var(--tertiary) 20%, transparent);
+}
+
+.status-badge.inactive {
+  background: color-mix(in srgb, var(--error-container, var(--surface-container-highest)) 20%, transparent);
+  color: var(--on-surface-variant);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 20%, transparent);
+}
+
+.status-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.quota-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
   font-size: 0.75rem;
 }
 
-.key-actions {
+.quota-bar-track {
+  width: 3rem;
+  height: 4px;
+  background: var(--surface-container-highest);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.quota-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s;
+}
+
+.row-actions {
   display: flex;
+  gap: 0.2rem;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.data-table tbody tr:hover .row-actions {
+  opacity: 1;
+}
+
+.row-action-btn {
+  background: none;
+  border: none;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  padding: 0.3rem;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.row-action-btn:hover {
+  color: var(--text);
+  background: var(--surface-container);
+}
+
+.row-action-btn.danger:hover {
+  color: var(--error);
+}
+
+.table-footer {
+  padding: 0.7rem 1.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--outline-variant) 10%, transparent);
+  background: color-mix(in srgb, var(--surface-container) 20%, transparent);
+}
+
+.table-footer-info {
+  font-size: 0.72rem;
+  color: var(--on-surface-variant);
+}
+
+/* ---- Modal ---- */
+.modal-title {
+  margin: 0;
+}
+
+.rate-limit-modal {
+  display: grid;
+  gap: 0.9rem;
+  min-width: min(28rem, 80vw);
+}
+
+.rate-limit-desc {
+  color: var(--on-surface-variant);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.rate-limit-field {
+  display: grid;
   gap: 0.4rem;
+}
+
+.rate-limit-field span {
+  color: var(--on-surface-variant);
+  font-size: 0.82rem;
+}
+
+.rate-limit-field input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  color: var(--text);
+  font-size: 0.95rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 1024px) {
+  .mid-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
@@ -636,25 +1204,28 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
-  .key-card {
-    grid-template-columns: 1fr;
+  .table-header {
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: flex-start;
   }
 
-  .key-actions {
+  .table-search-input {
     width: 100%;
   }
+}
 
-  .key-actions > * {
-    flex: 1;
-  }
+.loading-spinner {
+  animation: spin 0.8s linear infinite;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  display: inline-block;
+  height: 16px;
+  width: 16px;
+}
 
-  .leaderboard-item {
-    grid-template-columns: auto 1fr;
-  }
-
-  .leaderboard-calls {
-    grid-column: 2;
-    text-align: right;
-  }
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

@@ -1,135 +1,208 @@
 <template>
   <section class="settings-page">
-    <header class="settings-head">
-      <div class="head-content">
-        <h2>设置</h2>
-        <p>管理账号、模块和偏好设置</p>
+    <aside class="settings-sidebar">
+      <nav class="sidebar-nav">
+        <div class="nav-section-label">用户</div>
+        <RouterLink class="sidebar-nav-item" to="/settings/feed">
+          <span class="i-tabler-layout-grid" aria-hidden="true"></span>
+          <span>板块</span>
+        </RouterLink>
+        <RouterLink class="sidebar-nav-item" to="/settings/auth">
+          <span class="i-tabler-key" aria-hidden="true"></span>
+          <span>MCP</span>
+        </RouterLink>
+        <template v-if="isAdmin">
+          <div class="nav-section-label">管理</div>
+          <RouterLink class="sidebar-nav-item" to="/settings/admin/datasources">
+            <span class="i-tabler-database" aria-hidden="true"></span>
+            <span>数据源</span>
+          </RouterLink>
+          <RouterLink class="sidebar-nav-item" to="/settings/admin/users">
+            <span class="i-tabler-users" aria-hidden="true"></span>
+            <span>用户</span>
+          </RouterLink>
+          <RouterLink class="sidebar-nav-item" to="/settings/admin/api-keys">
+            <span class="i-tabler-activity" aria-hidden="true"></span>
+            <span>API 分析</span>
+          </RouterLink>
+          <RouterLink class="sidebar-nav-item" to="/settings/admin/permissions">
+            <span class="i-tabler-shield-check" aria-hidden="true"></span>
+            <span>权益配置</span>
+          </RouterLink>
+        </template>
+      </nav>
+      <div class="sidebar-footer">
+        <RouterLink class="sidebar-nav-item" to="/">
+          <span class="i-tabler-arrow-left" aria-hidden="true"></span>
+          <span>返回首页</span>
+        </RouterLink>
       </div>
-      <RouterLink to="/" class="back-btn" aria-label="返回首页">
-        <span class="i-tabler-home" aria-hidden="true"></span>
-        <span>返回首页</span>
-      </RouterLink>
-    </header>
-    <settings-nav />
-    <div class="settings-panel">
-      <RouterView v-slot="{ Component }">
-        <Transition name="fade" mode="out-in">
-          <KeepAlive :include="keepAliveComponents">
-            <component :is="Component" :key="currentRouteKey" />
-          </KeepAlive>
-        </Transition>
-      </RouterView>
-    </div>
+    </aside>
+    <main class="settings-main">
+      <div class="settings-panel">
+        <RouterView v-slot="{ Component }">
+          <Transition name="fade" mode="out-in">
+            <KeepAlive :include="keepAliveComponents">
+              <component :is="Component" :key="currentRouteKey" />
+            </KeepAlive>
+          </Transition>
+        </RouterView>
+      </div>
+    </main>
   </section>
 </template>
 
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import SettingsNav from './components/settings-nav.vue'
+import { useAdminMode } from '@/shared/composables/useAdminMode'
 
 const route = useRoute()
+const { isAdmin } = useAdminMode()
 
-// 需要缓存的组件名称（与组件定义的 name 一致）
 const keepAliveComponents = [
   'FeedSettings',
   'McpSettings',
   'AdminDatasourcesSettings',
   'AdminUsersSettings',
-  'AdminApiKeysSettings'
+  'AdminApiKeysSettings',
+  'AdminPermissionsSettings'
 ]
 
-// 使用路由的 name 作为 key，确保切换时组件保持状态
 const currentRouteKey = computed(() => route.name || route.path)
 </script>
 
 <style scoped>
 .settings-page {
-  display: grid;
-  gap: 1.1rem;
-  margin: 0 auto;
-  max-width: 72rem;
-  width: 100%;
-}
-
-.settings-head {
-  align-items: center;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, #0b63ff 10%, var(--surface)),
-    color-mix(in srgb, #0b63ff 2%, var(--surface))
-  );
-  border: 1px solid color-mix(in srgb, #0b63ff 24%, var(--border));
-  border-radius: 1rem;
   display: flex;
-  justify-content: space-between;
-  padding: 1rem 1.1rem;
+  height: calc(100dvh - 4rem);
+  margin: -1.5rem -2rem -2rem;
+  overflow: hidden;
 }
 
-.head-content {
+/* ---- Sidebar ---- */
+.settings-sidebar {
+  width: 16rem;
+  background: color-mix(in srgb, var(--surface-container-low) 40%, var(--surface));
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 0 1rem;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.sidebar-logo {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius);
+  background: var(--primary-container);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.sidebar-brand {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.sidebar-version {
+  font-size: 0.6rem;
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0 0.5rem;
   flex: 1;
 }
 
-.settings-head h2 {
-  font-size: 1.35rem;
-  margin: 0;
+.nav-section-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--on-surface-variant);
+  padding: 1rem 0.75rem 0.3rem;
+  opacity: 0.6;
 }
 
-.settings-head p {
-  color: var(--muted);
-  margin: 0.4rem 0 0;
-}
-
-.back-btn {
+.sidebar-nav-item {
+  display: flex;
   align-items: center;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border: 1px solid color-mix(in srgb, #0b63ff 38%, var(--border));
-  border-radius: 0.6rem;
-  color: inherit;
-  display: inline-flex;
-  gap: 0.35rem;
-  font-weight: 600;
-  padding: 0.5rem 0.85rem;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: calc(var(--radius) + 0.15rem);
+  color: var(--on-surface-variant);
+  font-size: 0.85rem;
+  font-weight: 500;
   text-decoration: none;
-  transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.14s ease;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.14s;
+  border: 1px solid transparent;
 }
 
-.back-btn:hover {
-  background: color-mix(in srgb, #0b63ff 10%, var(--surface));
-  border-color: color-mix(in srgb, #0b63ff 44%, var(--border));
-  transform: translateY(-1px);
+.sidebar-nav-item:hover {
+  background: color-mix(in srgb, var(--surface-container) 84%, transparent);
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--primary) 16%, transparent);
 }
 
-.back-btn:active {
-  transform: translateY(1px);
+.sidebar-nav-item.router-link-active {
+  background: var(--surface);
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 26%, var(--border));
+  font-weight: 600;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 8%, transparent);
+  transform: translateX(2px);
 }
 
-.back-btn span:first-child {
-  font-size: 1.15rem;
+.sidebar-nav-item.router-link-active span:first-child {
+  color: var(--primary);
+}
+
+.sidebar-nav-item span:first-child {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 0.75rem 0.5rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+/* ---- Main ---- */
+.settings-main {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--surface-dim);
+  padding: 2rem 2.5rem;
 }
 
 .settings-panel {
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.06);
-  padding: 1.1rem;
+  max-width: 56rem;
+  margin: 0 auto;
 }
 
-@media (max-width: 640px) {
-  .settings-head {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.8rem;
-  }
-
-  .back-btn {
-    width: 100%;
-    justify-content: center;
-  }
-}
-
-/* 过渡动画 */
+/* ---- Transition ---- */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.15s ease;
@@ -138,5 +211,16 @@ const currentRouteKey = computed(() => route.name || route.path)
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+  .settings-sidebar {
+    display: none;
+  }
+
+  .settings-main {
+    padding: 1rem;
+  }
 }
 </style>

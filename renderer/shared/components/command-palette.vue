@@ -1,15 +1,15 @@
 <template>
   <base-modal :open="open" @close="emit('close')">
     <template #title>
-      <h3>Command Palette</h3>
+      <h3>命令面板</h3>
     </template>
 
     <input
       ref="inputRef"
       v-model="localQuery"
-      aria-label="Search commands"
+      aria-label="搜索命令"
       class="command-input"
-      placeholder="Type a command"
+      placeholder="输入命令或关键词"
       type="text"
       @keydown.down.prevent="move(1)"
       @keydown.up.prevent="move(-1)"

@@ -1,5 +1,5 @@
 <template>
-  <div class="progress-wrap" aria-label="Reading progress">
+  <div class="progress-wrap" aria-label="阅读进度">
     <div class="progress-bar" :style="{ width: `${progress}%` }" />
   </div>
 </template>
@@ -15,5 +15,5 @@ defineProps({
 
 <style scoped>
 .progress-wrap { background: #e4e7ec; border-radius: 999px; height: 0.35rem; width: 100%; }
-.progress-bar { background: #0b63ff; border-radius: inherit; height: 100%; transition: width .16s linear; }
+.progress-bar { background: var(--primary); border-radius: inherit; height: 100%; transition: width .16s linear; }
 </style>

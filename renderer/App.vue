@@ -1,20 +1,28 @@
 <template>
   <div class="app-shell">
-    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <a href="#main-content" class="skip-link">跳转到主要内容</a>
     <toast-container :toasts="toasts" @dismiss="dismiss" />
     <header class="app-header">
       <button
         class="menu-toggle"
         type="button"
-        aria-label="Toggle navigation menu"
+        aria-label="切换导航菜单"
         @click="mobileMenuOpen = !mobileMenuOpen"
       >
         ≡
       </button>
       <RouterLink class="header-brand" to="/">
-        <img src="/logo.png" alt="logo" class="brand-logo">
-        <span class="brand-text">News</span>
+        <div class="sidebar-head">
+          <div class="sidebar-logo">K</div>
+          <div>
+            <div class="sidebar-brand">K-News</div>
+          </div>
+        </div>
       </RouterLink>
+      <div class="header-search">
+        <span class="i-tabler-search search-icon" aria-hidden="true"></span>
+        <input class="search-input" type="text" placeholder="热点情报检索..." readonly />
+      </div>
       <nav v-if="isHomeRoute" class="home-tabs">
         <button type="button" :class="{ active: homeTab === 'hottest' }" @click="setHomeTab('hottest')">热点</button>
         <button type="button" :class="{ active: homeTab === 'realtime' }" @click="setHomeTab('realtime')">时事</button>
@@ -22,6 +30,12 @@
         <button type="button" :class="{ active: homeTab === 'china' }" @click="setHomeTab('china')">更多</button>        
       </nav>
       <nav class="desktop-nav">
+        <button v-if="isHomeRoute && canRefresh" class="refresh-btn" type="button" @click="onRefresh">一键刷新</button>
+        <button v-else-if="isHomeRoute && isLoggedIn" class="refresh-btn" type="button" @click="showUpgradeHint">一键刷新</button>
+        <button v-else-if="isHomeRoute" class="refresh-btn" type="button" @click="showLoginHint">一键刷新</button>
+        <RouterLink class="nav-link" :class="{ active: isHomeRoute }" to="/">首页</RouterLink>
+        <RouterLink class="nav-link" :class="{ active: route.path === '/assistant' }" to="/assistant">助手</RouterLink>
+        <RouterLink class="nav-link" :class="{ active: route.path.startsWith('/settings') }" to="/settings">设置</RouterLink>
         <button
           class="theme-toggle"
           type="button"
@@ -33,8 +47,6 @@
           <span v-else-if="uiStore.theme === 'light'" class="i-tabler-sun" aria-hidden="true"></span>
           <span v-else class="i-tabler-device-desktop" aria-hidden="true"></span>
         </button>
-        <button v-if="isHomeRoute && canRefresh" class="refresh-btn" type="button" @click="onRefresh">一键刷新</button>
-        <button v-else-if="isHomeRoute && isLoggedIn" class="refresh-btn" type="button" @click="showUpgradeHint">一键刷新</button>
       </nav>
       <div
         ref="userMenuRef"
@@ -47,7 +59,7 @@
           登录
         </button>
         <!-- Logged in: show avatar -->
-        <button v-else class="user-trigger" type="button" aria-label="Open account menu" @click="userMenuOpen = !userMenuOpen">
+        <button v-else class="user-trigger" type="button" aria-label="打开账户菜单" @click="userMenuOpen = !userMenuOpen">
           <img v-if="userStore.profile?.avatar" :src="userStore.profile.avatar" alt="avatar" class="avatar" />
           <span v-else-if="userStore.loginType === 'magic-link'" class="avatar-fallback i-tabler-user" aria-hidden="true" />
           <span v-else class="avatar-fallback i-tabler-brand-github-filled" aria-hidden="true" />
@@ -60,18 +72,19 @@
         >
           <template v-if="isLoggedIn">
             <p class="user-name">{{ userStore.profile?.name || 'GitHub User' }}</p>
+            <RouterLink class="menu-link" to="/subscribe" @click="userMenuOpen = false">
+              订阅方案
+              <span class="plan-tag">{{ currentPlanLabel }}</span>
+            </RouterLink>
             <RouterLink class="menu-link" to="/settings" @click="userMenuOpen = false">设置</RouterLink>
             <button class="menu-link danger" type="button" @click="logout">退出</button>
-          </template>
-          <template v-else>
-            <p class="menu-hint">Login not available</p>
           </template>
         </div>
       </div>
     </header>
 
-    <aside class="mobile-drawer" :class="{ open: mobileMenuOpen }" aria-label="Mobile navigation drawer">
-      <RouterLink to="/" @click="mobileMenuOpen = false">Home</RouterLink>
+    <aside class="mobile-drawer" :class="{ open: mobileMenuOpen }" aria-label="移动端导航抽屉">
+      <RouterLink to="/" @click="mobileMenuOpen = false">首页</RouterLink>
       <RouterLink v-if="isLoggedIn" to="/settings" @click="mobileMenuOpen = false">设置</RouterLink>
     </aside>
 
@@ -91,9 +104,10 @@
       </RouterView>
     </main>
 
-    <nav class="mobile-bottom-nav" aria-label="Mobile bottom navigation">
-      <RouterLink to="/" aria-label="Home">Home</RouterLink>
-      <RouterLink v-if="isLoggedIn" to="/settings" aria-label="Settings">Settings</RouterLink>
+    <nav class="mobile-bottom-nav" aria-label="移动端底部导航">
+      <RouterLink to="/" aria-label="首页">首页</RouterLink>
+      <RouterLink to="/assistant" aria-label="K-Ai">K-Ai</RouterLink>
+      <RouterLink v-if="isLoggedIn" to="/settings" aria-label="设置">设置</RouterLink>
     </nav>
 
     <login-modal
@@ -136,12 +150,32 @@ const loginModalVisible = ref(false)
 const githubDialogVisible = ref(false)
 const onRefresh = () => window.dispatchEvent(new CustomEvent('knews:refresh-feed'))
 const { commands, query } = useCommands({ onRefresh })
-const { toasts, dismiss, success, warning, error } = useToast()
+const { toasts, dismiss, success, warning } = useToast()
 const authApi = useAuthApi()
 const uiStore = useUiStore()
 const userStore = useUserStore()
 const canRefresh = computed(() => isLoggedIn.value && (userStore.profile?.level ?? 0) >= 1)
-const showUpgradeHint = () => warning('升级订阅后可使用一键刷新功能')
+const showUpgradeHint = () => {
+  router.push('/subscribe')
+  warning('您当前帐户的 ' + getLevelName(userStore.profile.level) + ' 订阅无法使用该功能～正在前往升级～')
+}
+const getLevelName = (level) => {
+  switch (level){
+    case 0:
+      return '基础版（Free）'
+    case 1:
+      return '高级版（Plus）'
+    case 2:
+      return '专业版（Pro）'
+  }
+}
+const showLoginHint = () => warning('登录后才能使用一键刷新哦～')
+const currentPlanLabel = computed(() => {
+  const level = userStore.profile?.level ?? 0
+  if (level >= 2) return 'Pro'
+  if (level >= 1) return 'Plus'
+  return 'Free'
+})
 const route = useRoute()
 const router = useRouter()
 const media = typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)') : null
@@ -179,7 +213,7 @@ const toggleTheme = () => {
 
 const runCommand = async (command) => {
   await command.handler?.()
-  success(`Executed: ${command.label}`)
+  success(`已执行：${command.label}`)
 }
 
 const onKeydown = (event) => {
@@ -199,24 +233,65 @@ const syncAuthToken = () => {
   else localStorage.removeItem('auth_token')
 }
 
+const buildGithubAvatar = (login, fallbackAvatar = '') => {
+  if (!login) return fallbackAvatar || ''
+  return `https://avatars.githubusercontent.com/${login}`
+}
+
 const syncProfile = async () => {
-  if (!userStore.authToken) return
   try {
-    const profile = await authApi.getProfile()
-    if (!profile?.user && !profile?.login && !profile?.id) return
+    // Main process session (session.enc) is the source of truth.
+    // It's restored on boot by bootstrap.js before any window is created.
+    const session = await window.api.auth.getSession()
+    if (!session?.userId) {
+      userStore.clearAuth()
+      syncAuthToken()
+      return
+    }
+
+    const provider = session.provider || userStore.loginType || 'github'
+    const login = session.nickname || userStore.profile?.login || ''
     userStore.setAuth({
-      token: userStore.authToken,
-      type: userStore.loginType || profile.type || 'github',
+      token: userStore.authToken || '',
+      type: provider,
       profile: {
         ...(userStore.profile || {}),
-        name: userStore.profile?.name || profile.nickname || profile.login || '',
-        login: profile.nickname || userStore.profile?.login || '',
-        userId: profile.id || userStore.profile?.userId,
-        level: profile.level ?? userStore.profile?.level ?? 0,
+        name: session.nickname || userStore.profile?.name || '',
+        login,
+        userId: session.userId,
+        level: session.level ?? userStore.profile?.level ?? 0,
+        avatar: provider === 'github'
+          ? buildGithubAvatar(login, userStore.profile?.avatar)
+          : (userStore.profile?.avatar || ''),
       }
     })
+    syncAuthToken()
+
+    // Enrich with DB profile (avatar, updated nickname/level)
+    try {
+      const dbProfile = await authApi.getProfile()
+      if (dbProfile?.id) {
+        const login = dbProfile.nickname || userStore.profile?.login || ''
+        userStore.setAuth({
+          token: userStore.authToken,
+          type: userStore.loginType,
+          profile: {
+            ...userStore.profile,
+            name: dbProfile.nickname || userStore.profile?.name || '',
+            login,
+            userId: dbProfile.id || userStore.profile?.userId,
+            level: dbProfile.level ?? userStore.profile?.level ?? 0,
+            avatar: userStore.loginType === 'github'
+              ? buildGithubAvatar(login, userStore.profile?.avatar)
+              : (userStore.profile?.avatar || ''),
+          }
+        })
+      }
+    } catch {
+      // enrichment failure is non-critical
+    }
   } catch {
-    // ignore profile refresh failures to avoid blocking app boot
+    // ignore session restore failures
   }
 }
 
@@ -254,15 +329,16 @@ const loginWithGithub = async () => {
       return
     }
     if (session) {
+      const login = session.nickname || ''
       userStore.setAuth({
         token: session.userId ? `github-${session.userId}` : 'github',
         type: session.provider || 'github',
         profile: {
           name: session.nickname || '',
-          login: session.nickname || '',
+          login,
           userId: session.userId,
           level: session.level ?? 0,
-          avatar: `https://avatars.githubusercontent.com/` + session.nickname
+          avatar: buildGithubAvatar(login)
         }
       })
       syncAuthToken()
@@ -417,12 +493,18 @@ onUnmounted(() => {
 
 .app-header {
   align-items: center;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   display: flex;
-  gap: 1rem;
+  gap: 0.5rem;
+  height: 4rem;
   justify-content: flex-start;
-  padding: 0.75rem 1rem;
+  padding: 0 2rem;
   position: relative;
+  z-index: 50;
 }
 
 .desktop-nav {
@@ -434,60 +516,140 @@ onUnmounted(() => {
 
 .theme-toggle {
   align-items: center;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 0.6rem;
-  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: none;
+  border-radius: 999px;
+  color: var(--text);
   cursor: pointer;
   display: inline-flex;
-  height: 2.15rem;
+  height: 2.25rem;
   justify-content: center;
-  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
-  width: 2.15rem;
+  width: 2.25rem;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  flex-shrink: 0;
+  padding: 0;
+  /* box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 20%, transparent); */
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, transform 0.14s ease;
 }
 
 .theme-toggle:hover {
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border-color: color-mix(in srgb, #0b63ff 38%, var(--border));
-  color: color-mix(in srgb, #0b63ff 72%, var(--text));
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+  color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 8%, transparent);
 }
 
 .theme-toggle:active {
-  transform: translateY(1px);
+  transform: translateY(1px) scale(0.98);
 }
 
 .theme-toggle span {
-  font-size: 1.2rem;
+  font-size: 1rem;
+}
+
+.theme-dark .theme-toggle {
+  background: color-mix(in srgb, var(--surface-container-low) 92%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 8%, transparent);
 }
 
 .header-brand {
-  align-items: center;
-  color: inherit;
+  color: var(--text);
   display: inline-flex;
-  gap: 0.5rem;
   text-decoration: none;
 }
 
-.brand-logo {
-  width: 2.2rem;
-  height: 2.2rem;
-  object-fit: contain;
-  transform: translate(10px, 1.5px);
-}
-
-.brand-text {
+.sidebar-head {
   display: flex;
   align-items: center;
-  font-size: 2rem;
+  gap: 0.6rem;
+}
+
+.sidebar-logo {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius);
+  background: var(--primary-container);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-weight: 800;
-  line-height: 1;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.sidebar-brand {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.1;
+}
+
+.header-search {
+  align-items: center;
+  background: var(--surface-container-low);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: none;
+  gap: 0.5rem;
+  margin-left: 1rem;
+  padding: 0.3rem 0.7rem;
+}
+
+@media (min-width: 900px) {
+  .header-search {
+    display: inline-flex;
+  }
+}
+
+.search-icon {
+  color: var(--on-surface-variant);
+  font-size: 0.9rem;
+}
+
+.search-input {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 0.82rem;
+  outline: none;
+  padding: 0;
+  width: 14rem;
+  min-height: auto;
+}
+
+.search-input::placeholder {
+  color: var(--on-surface-variant);
+}
+
+.nav-link {
+  align-items: center;
+  color: var(--on-surface-variant);
+  display: inline-flex;
+  font-size: 0.88rem;
+  font-weight: 500;
+  height: 4rem;
+  padding: 0 0.5rem;
+  position: relative;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.nav-link:hover {
+  color: var(--primary);
+}
+
+.nav-link.active {
+  border-bottom: 2px solid var(--primary);
+  color: var(--primary);
+  font-weight: 700;
 }
 
 .menu-toggle {
   align-items: center;
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   display: none;
   height: 44px;
   justify-content: center;
@@ -495,12 +657,12 @@ onUnmounted(() => {
 }
 
 .home-tabs {
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  background: var(--surface-container-low);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius);
   display: inline-flex;
   left: 50%;
-  padding: 0.15rem;
+  padding: 0.2rem;
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
@@ -509,50 +671,73 @@ onUnmounted(() => {
 .home-tabs button {
   background: transparent;
   border: 0;
-  border-radius: 999px;
-  color: var(--muted);
+  border-radius: 2px;
+  color: var(--on-surface-variant);
   cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
   min-height: 2rem;
-  padding: 0.2rem 0.75rem;
+  padding: 0.2rem 1rem;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
 .home-tabs .active {
-  background: color-mix(in srgb, #ff756a 22%, transparent);
-  color: #f44d47;
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  color: var(--text);
+  font-weight: 600;
 }
 
 .header-link,
 .refresh-btn {
   align-items: center;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border: 1px solid color-mix(in srgb, #b7c2d7 55%, var(--border));
-  border-radius: 0.6rem;
-  color: inherit;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface-container-low) 92%, transparent));
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  border-radius: 999px;
+  color: var(--primary);
   cursor: pointer;
   display: inline-flex;
+  font-size: 0.875rem;
   font-weight: 600;
+  gap: 0.35rem;
   justify-content: center;
-  min-height: 2.15rem;
-  padding: 0 0.9rem;
+  min-height: 2.4rem;
+  padding: 0 1rem;
   text-decoration: none;
-  transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.14s ease;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 28%, transparent),
+    0 4px 10px color-mix(in srgb, var(--primary) 6%, transparent);
+  transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.14s ease;
 }
 
 .header-link:hover,
 .refresh-btn:hover {
-  background: color-mix(in srgb, #0b63ff 10%, var(--surface));
-  border-color: color-mix(in srgb, #0b63ff 38%, var(--border));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 6%, var(--surface)), color-mix(in srgb, var(--primary) 10%, var(--surface-container-low)));
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 30%, transparent),
+    0 8px 18px color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 .header-link:active,
 .refresh-btn:active {
-  transform: translateY(1px);
+  transform: translateY(1px) scale(0.99);
 }
 
 .header-link.router-link-active {
-  background: color-mix(in srgb, #0b63ff 16%, var(--surface));
-  border-color: color-mix(in srgb, #0b63ff 44%, var(--border));
-  color: #0b63ff;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+}
+
+.theme-dark .refresh-btn,
+.theme-dark .header-link {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-container-low) 94%, transparent), color-mix(in srgb, var(--surface) 94%, transparent));
+  border-color: color-mix(in srgb, #ffffff 10%, var(--border));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 10%, transparent),
+    0 4px 10px rgba(0, 0, 0, 0.22);
 }
 
 .user-menu {
@@ -561,22 +746,22 @@ onUnmounted(() => {
 
 .user-trigger {
   align-items: center;
-  background: color-mix(in srgb, var(--surface) 84%, transparent);
-  border: 1px solid var(--border);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-variant);
   border-radius: 999px;
   cursor: pointer;
   display: inline-flex;
   height: 2.1rem;
   justify-content: center;
   min-height: 2.1rem;
-  transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.14s ease;
+  overflow: hidden;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
   width: 2.1rem;
 }
 
 .user-trigger:hover {
-  background: color-mix(in srgb, #0b63ff 10%, var(--surface));
-  border-color: color-mix(in srgb, #0b63ff 38%, var(--border));
-  box-shadow: 0 0 0 2px color-mix(in srgb, #0b63ff 16%, transparent);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .user-trigger:active {
@@ -597,7 +782,7 @@ onUnmounted(() => {
 
 .avatar-fallback {
   align-items: center;
-  color: color-mix(in srgb, #0b63ff 72%, var(--text));
+  color: var(--primary);
   font-size: 1.3rem;
   font-weight: 400;
   justify-content: center;
@@ -607,8 +792,8 @@ onUnmounted(() => {
 .user-popover {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12);
   display: grid;
   gap: 0.35rem;
   padding: 0.55rem;
@@ -628,21 +813,38 @@ onUnmounted(() => {
 
 .menu-link {
   align-items: center;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 0.55rem;
-  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text);
   cursor: pointer;
   display: inline-flex;
   font: inherit;
-  justify-content: center;
+  font-size: 0.86rem;
+  font-weight: 500;
+  justify-content: flex-start;
   min-height: 2rem;
   padding: 0 0.65rem;
   text-decoration: none;
+  transition: background 0.12s;
+}
+
+.menu-link:hover {
+  background: var(--surface-container-low);
 }
 
 .menu-link.danger {
-  color: #d14343;
+  color: var(--error);
+}
+
+.plan-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius);
+  margin-left: 0.35rem;
 }
 
 .menu-hint {
@@ -654,23 +856,23 @@ onUnmounted(() => {
 
 .login-trigger {
   align-items: center;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border: 1px solid color-mix(in srgb, #b7c2d7 55%, var(--border));
-  border-radius: 0.6rem;
-  color: inherit;
+  background: var(--primary);
+  border: none;
+  border-radius: var(--radius);
+  color: var(--on-primary);
   cursor: pointer;
   display: inline-flex;
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 0.875rem;
   justify-content: center;
   min-height: 2.15rem;
-  padding: 0 0.9rem;
+  padding: 0 1rem;
   text-decoration: none;
-  transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.14s ease;
+  transition: background 0.16s ease, transform 0.14s ease;
 }
 
 .login-trigger:hover {
-  background: color-mix(in srgb, #0b63ff 10%, var(--surface));
-  border-color: color-mix(in srgb, #0b63ff 38%, var(--border));
+  background: var(--primary-dim);
 }
 
 .login-trigger:active {
@@ -683,7 +885,7 @@ onUnmounted(() => {
   margin: 0;
   max-width: 100%;
   overflow: auto;
-  padding: 1.1rem 1.2rem 2rem;
+  padding: 1.5rem 2rem 2rem;
   -ms-overflow-style: none;
   scrollbar-width: none;
   width: 100%;
@@ -722,7 +924,7 @@ onUnmounted(() => {
   border-right: 1px solid var(--border);
   display: none;
   gap: 0.8rem;
-  inset: 3.25rem auto 0 0;
+  inset: 4rem auto 0 0;
   padding: 1rem;
   position: fixed;
   transform: translateX(-100%);
@@ -773,6 +975,10 @@ onUnmounted(() => {
   .user-popover {
     right: auto;
     width: 12rem;
+  }
+
+  .app-main {
+    padding: 1rem;
   }
 }
 </style>

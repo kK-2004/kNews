@@ -3,8 +3,8 @@
     <div v-if="open" class="backdrop" @click="onBackdropClick">
       <div ref="modalRef" class="modal" role="dialog" aria-modal="true" @click.stop>
         <header class="modal-header">
-          <slot name="title"><h3>Modal</h3></slot>
-          <button aria-label="Close modal" class="close-button" type="button" @click="$emit('close')">
+          <slot name="title"><h3>弹窗</h3></slot>
+          <button aria-label="关闭弹窗" class="close-button" type="button" @click="$emit('close')">
             <span class="i-tabler-x"></span>
           </button>
         </header>

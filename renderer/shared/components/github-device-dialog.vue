@@ -152,14 +152,14 @@ watch(
 }
 
 .device-copy-btn:hover {
-  background: color-mix(in srgb, #0b63ff 12%, var(--surface));
-  border-color: color-mix(in srgb, #0b63ff 38%, var(--border));
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--primary) 38%, var(--border));
 }
 
 .device-copy-btn.copied {
-  background: color-mix(in srgb, #22c55e 12%, transparent);
-  border-color: #22c55e;
-  color: #22c55e;
+  background: color-mix(in srgb, #2a8f55 12%, transparent);
+  border-color: #2a8f55;
+  color: #2a8f55;
 }
 
 .device-copy-check {
@@ -180,7 +180,7 @@ watch(
 }
 
 .device-link {
-  color: #0b63ff;
+  color: var(--primary);
   text-decoration: none;
 }
 
@@ -209,7 +209,7 @@ watch(
 .device-spinner {
   animation: device-spin 0.8s linear infinite;
   border: 2px solid var(--border);
-  border-top-color: #0b63ff;
+  border-top-color: var(--primary);
   border-radius: 50%;
   display: inline-block;
   height: 1rem;

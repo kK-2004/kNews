@@ -1,5 +1,5 @@
 <template>
-  <div class="skeleton" :aria-busy="true" aria-label="Loading content" />
+  <div class="skeleton" :aria-busy="true" aria-label="加载中" />
 </template>
 
 <script setup>

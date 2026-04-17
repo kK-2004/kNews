@@ -6,7 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const tools = require('./mcp-tools');
+const { WebStandardStreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js');
+const { createMcpSdkServer } = require('./mcp-tools');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -116,13 +117,14 @@ class RateLimiter {
 
 class McpServer {
   /**
-   * @param {{ sourceService: object, feedService: object, apiKeyRepository: object }} deps
+   * @param {{ sourceService: object, feedService: object, apiKeyRepository: object, usageRepository?: object }} deps
    * @param {{ port?: number }=} opts
    */
-  constructor({ sourceService, feedService, apiKeyRepository }, opts = {}) {
+  constructor({ sourceService, feedService, apiKeyRepository, usageRepository }, opts = {}) {
     this.sourceService = sourceService;
     this.feedService = feedService;
     this.apiKeyRepository = apiKeyRepository;
+    this.usageRepository = usageRepository;
 
     this.defaultPort = opts.port || 12580;
     /** @type {http.Server|null} */
@@ -132,11 +134,19 @@ class McpServer {
 
     this.rateLimiter = new RateLimiter();
 
-    // Build a name -> tool lookup for fast dispatch
-    this.toolMap = new Map();
-    for (const tool of tools) {
-      this.toolMap.set(tool.name, tool);
-    }
+    /**
+     * Active MCP sessions, keyed by session ID.
+     * Each entry holds the SDK server instance, transport, and associated API key.
+     * @type {Map<string, { server: object, transport: object, apiKeyId: string, createdAt: number }>}
+     */
+    this._sessions = new Map();
+
+    /**
+     * Sessions that have already been counted for usage in the current hour.
+     * Key: `${apiKeyId}:${sessionId}` — cleared on hourly boundary.
+     * @type {Set<string>}
+     */
+    this._billedSessions = new Set();
   }
 
   // -----------------------------------------------------------------------
@@ -188,10 +198,17 @@ class McpServer {
   }
 
   /**
-   * Gracefully stop the server.
+   * Gracefully stop the server and clean up all sessions.
    */
   stop() {
     return new Promise((resolve) => {
+      // Close all active sessions
+      for (const entry of this._sessions.values()) {
+        entry.server.close().catch(() => {});
+      }
+      this._sessions.clear();
+      this._billedSessions.clear();
+
       if (!this.server) {
         resolve();
         return;
@@ -234,16 +251,31 @@ class McpServer {
    * @returns {Promise<object|null>}
    */
   async _authenticate(req) {
+    let apiKey = '';
+
+    // 1. Try Authorization: Bearer header
     const authHeader = req.headers['authorization'];
-    if (!authHeader || typeof authHeader !== 'string') return null;
+    if (authHeader && typeof authHeader === 'string') {
+      const match = authHeader.match(/^Bearer\s+(.+)$/i);
+      if (match) apiKey = match[1].trim();
+    }
 
-    const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    if (!match) return null;
+    // 2. Fallback: ?apikey= query parameter
+    if (!apiKey) {
+      const url = new URL(req.url, `http://localhost:${this.port}`);
+      apiKey = (url.searchParams.get('apikey') || '').trim();
+    }
 
-    const apiKey = match[1].trim();
-    const keyHash = hashApiKey(apiKey);
+    if (!apiKey) return null;
 
     try {
+      // Default keys may already be passed around as the stored hash value.
+      const defaultRow = await this.apiKeyRepository.findByHash(apiKey, {
+        isDefault: true,
+      });
+      if (defaultRow) return defaultRow;
+
+      const keyHash = hashApiKey(apiKey);
       const row = await this.apiKeyRepository.findByHash(keyHash);
       return row || null;
     } catch (err) {
@@ -264,14 +296,10 @@ class McpServer {
       return this._handleHealth(res);
     }
 
-    // --- POST routes below require auth ----------------------------------
-    if (req.method === 'POST' && url.pathname === '/mcp/tools/list') {
-      return this._withAuth(req, res, () => this._handleToolsList(res));
-    }
-
-    if (req.method === 'POST' && url.pathname === '/mcp/tools/call') {
+    // --- Standard MCP endpoint -------------------------------------------
+    if (url.pathname === '/mcp') {
       return this._withAuth(req, res, (apiKeyRow) =>
-        this._handleToolsCall(req, res, apiKeyRow),
+        this._handleMcpRequest(req, res, apiKeyRow),
       );
     }
 
@@ -292,9 +320,14 @@ class McpServer {
       return jsonResponse(res, 401, { error: 'Unauthorized' });
     }
 
-    // Rate limit – default 100 requests/hour if not set on the key
+    // Rate limit – default 100 requests/hour if not set on the key.
+    // Negative values mean "unlimited".
     const rateLimit =
       typeof apiKeyRow.rate_limit === 'number' ? apiKeyRow.rate_limit : 100;
+    if (rateLimit < 0) {
+      return handler(apiKeyRow);
+    }
+
     const result = this.rateLimiter.check(apiKeyRow.id, rateLimit);
 
     if (!result.allowed) {
@@ -304,19 +337,54 @@ class McpServer {
       });
     }
 
-    // Update usage counters in the background (fire-and-forget)
-    try {
-      this.apiKeyRepository.updateUsage(apiKeyRow.id).catch(() => {});
-    } catch (_e) {
-      // non-critical
-    }
-
     return handler(apiKeyRow);
   }
 
-  // -----------------------------------------------------------------------
-  // Endpoint handlers
-  // -----------------------------------------------------------------------
+  /**
+   * Extract Mcp-Session-Id from request headers.
+   * @param {http.IncomingMessage} req
+   * @returns {string|null}
+   */
+  _getSessionId(req) {
+    const val = req.headers['mcp-session-id'];
+    if (typeof val === 'string' && val.trim()) return val.trim();
+    return null;
+  }
+
+  /**
+   * Get a billing key for the current hour + apiKey + session.
+   * If no session exists, creates a one-shot key so the request is still billed.
+   * @param {string} apiKeyId
+   * @param {string|null} sessionId
+   * @returns {string}
+   */
+  _getBillingKey(apiKeyId, sessionId) {
+    const now = new Date();
+    const hour = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')} ${String(now.getUTCHours()).padStart(2, '0')}`;
+    const session = sessionId || `nosession-${crypto.randomUUID()}`;
+    return `${hour}:${apiKeyId}:${session}`;
+  }
+
+  /**
+   * Record hourly usage for the given API key, once per session per hour.
+   *
+   * @param {string} apiKeyId
+   * @param {string|null} sessionId - Mcp-Session-Id header value
+   */
+  _recordUsageOncePerSession(apiKeyId, sessionId) {
+    if (!this.usageRepository) return;
+
+    const billingKey = this._getBillingKey(apiKeyId, sessionId);
+    if (this._billedSessions.has(billingKey)) return;
+
+    this._billedSessions.add(billingKey);
+    try {
+      this.usageRepository.incrementHourly(apiKeyId).catch(() => {});
+      this.apiKeyRepository.updateUsage(apiKeyId).catch(() => {});
+    } catch (_e) {
+      // non-critical
+    }
+  }
 
   _handleHealth(res) {
     const uptime = this.startedAt
@@ -325,49 +393,62 @@ class McpServer {
     jsonResponse(res, 200, { status: 'ok', uptime, port: this.port });
   }
 
-  _handleToolsList(res) {
-    const definitions = tools.map((t) => ({
-      name: t.name,
-      description: t.description,
-    }));
-    jsonResponse(res, 200, { result: definitions });
-  }
+  async _handleMcpRequest(req, res, apiKeyRow) {
+    const sessionId = this._getSessionId(req);
 
-  async _handleToolsCall(req, res, _apiKeyRow) {
-    // Parse JSON body
-    const body = await this._readBody(req);
-    if (!body) {
-      return jsonResponse(res, 400, { error: 'Request body required' });
+    // --- Existing session: reuse transport + SDK server ---
+    if (sessionId && this._sessions.has(sessionId)) {
+      const entry = this._sessions.get(sessionId);
+      try {
+        const request = await this._toWebRequest(req);
+        const response = await entry.transport.handleRequest(request);
+        return this._sendWebResponse(res, response);
+      } catch (err) {
+        console.error('[McpServer] MCP session request error:', err);
+        jsonResponse(res, 500, { error: `Internal server error: ${err.message}` });
+      }
+      return;
     }
 
-    let parsed;
-    try {
-      parsed = JSON.parse(body);
-    } catch (_e) {
-      return jsonResponse(res, 400, { error: 'Invalid JSON' });
-    }
+    // --- New session (initialize) ---
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: () => crypto.randomUUID(),
+      enableJsonResponse: true,
+    });
 
-    const toolName = parsed.tool;
-    const args = parsed.args || {};
-
-    const tool = this.toolMap.get(toolName);
-    if (!tool) {
-      return jsonResponse(res, 404, {
-        error: `Unknown tool: ${toolName}`,
-      });
-    }
+    const server = createMcpSdkServer({
+      sourceService: this.sourceService,
+      feedService: this.feedService,
+      apiKey: apiKeyRow,
+    });
 
     try {
-      const result = await tool.handler(args, {
-        sourceService: this.sourceService,
-        feedService: this.feedService,
-      });
-      jsonResponse(res, 200, { result });
+      const request = await this._toWebRequest(req);
+      transport.onerror = (err) =>
+        console.error('[McpServer] MCP transport error:', err);
+
+      await server.connect(transport);
+      const response = await transport.handleRequest(request);
+
+      // Capture the session ID assigned by the transport
+      const newSessionId = transport.sessionId || null;
+      if (newSessionId) {
+        this._sessions.set(newSessionId, {
+          server,
+          transport,
+          apiKeyId: apiKeyRow.id,
+          createdAt: Date.now(),
+        });
+
+        // Record usage once per session per hour
+        this._recordUsageOncePerSession(apiKeyRow.id, newSessionId);
+      }
+
+      return this._sendWebResponse(res, response);
     } catch (err) {
-      console.error(`[McpServer] Tool "${toolName}" error:`, err);
-      jsonResponse(res, 500, {
-        error: `Tool execution failed: ${err.message}`,
-      });
+      console.error('[McpServer] MCP initialize error:', err);
+      jsonResponse(res, 500, { error: `Internal server error: ${err.message}` });
+      await server.close().catch(() => {});
     }
   }
 
@@ -388,6 +469,58 @@ class McpServer {
         resolve(null);
       });
     });
+  }
+
+  async _toWebRequest(req) {
+    const headers = {};
+    for (const [key, value] of Object.entries(req.headers || {})) {
+      if (Array.isArray(value)) {
+        headers[key] = value.join(', ');
+      } else if (typeof value === 'string') {
+        headers[key] = value;
+      }
+    }
+
+    const accept = headers.accept || '';
+    if (!accept.includes('application/json') || !accept.includes('text/event-stream')) {
+      headers.accept = 'application/json, text/event-stream';
+    }
+
+    const body =
+      req.method === 'GET' || req.method === 'HEAD'
+        ? undefined
+        : await this._readBody(req);
+
+    return new Request(`http://localhost:${this.port}${req.url}`, {
+      method: req.method,
+      headers,
+      body: body || undefined,
+    });
+  }
+
+  async _sendWebResponse(res, response) {
+    // Forward all response headers (including mcp-session-id from transport)
+    const headers = Object.fromEntries(response.headers.entries());
+    res.writeHead(response.status, headers);
+    if (!response.body) {
+      res.end();
+      return;
+    }
+
+    const reader = response.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!res.write(Buffer.from(value))) {
+          await new Promise((resolve) => res.once('drain', resolve));
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    res.end();
   }
 }
 

@@ -11,7 +11,7 @@ class SourceService {
    * @returns {Promise<Object[]>}
    */
   async getSources() {
-    return await this.sourceRepository.findAll();
+    return await this.sourceRepository.findAll(true);
   }
 
   /**

@@ -1,4 +1,4 @@
-import { authApi, userApi } from '@/shared/utils/ipc-api'
+import { userApi, adminApi } from '@/shared/utils/ipc-api'
 
 export function useAuthApi() {
   const getLoginStatus = () => {
@@ -6,15 +6,17 @@ export function useAuthApi() {
     return Promise.resolve({ enable: Boolean(window?.api) })
   }
   const getProfile = () => userApi.profile()
-  const listApiKeys = () => authApi.getSession()
-  const createApiKey = (payload) => userApi.update(payload)
-  const deleteApiKey = (id) => userApi.update({ deleteApiKey: id })
+  const listApiKeys = () => adminApi.listApiKeys()
+  const createApiKey = (payload) => adminApi.createApiKey(payload)
+  const deleteApiKey = (id) => adminApi.deleteApiKey(id)
+  const updateApiKey = (id, payload) => adminApi.updateApiKey(id, payload)
 
   return {
     getLoginStatus,
     getProfile,
     listApiKeys,
     createApiKey,
-    deleteApiKey
+    deleteApiKey,
+    updateApiKey
   }
 }

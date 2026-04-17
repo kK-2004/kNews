@@ -6,15 +6,15 @@
     <img
       v-if="article.image || article.thumbnail"
       :src="article.image || article.thumbnail"
-      :alt="article.title || 'Article image'"
+      :alt="article.title || '文章配图'"
       class="thumb"
       loading="lazy"
       decoding="async"
     />
-    <p class="meta">{{ article.pubDate || article.created || 'Unknown date' }}</p>
+    <p class="meta">{{ article.pubDate || article.created || '未知时间' }}</p>
     <p>{{ article.description || article.summary || '' }}</p>
     <template #footer>
-      <a :href="article.url" target="_blank" rel="noreferrer">Open</a>
+      <a :href="article.url" target="_blank" rel="noreferrer">打开原文</a>
     </template>
   </base-card>
 </template>

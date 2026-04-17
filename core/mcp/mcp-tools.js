@@ -1,87 +1,134 @@
 'use strict';
 
-/**
- * MCP tool definitions.
- *
- * Each tool has:
- *   - name       – unique string identifier
- *   - description – human-readable summary
- *   - handler     – async (args, { sourceService, feedService }) => result
- *
- * The handler receives the parsed `args` from the client request and a context
- * object that carries the injected service instances.
- */
+const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
+const { z } = require('zod');
 
-/**
- * Tool: get_available_sources
- * Returns a list of all enabled news sources (id, name, category).
- */
-const getAvailableSources = {
-  name: 'get_available_sources',
-  description:
-    'Returns a list of all available news sources with their id, name, and category.',
-  handler: async function (_args, ctx) {
-    const sources = await ctx.sourceService.getSources();
-
-    return sources.map((s) => ({
-      id: s.id,
-      name: s.name,
-      category: s.category || null,
-    }));
-  },
-};
-
-/**
- * Tool: get_hotest_latest_news
- * Returns cached news items for a given source.
- *
- * Args:
- *   source_id?  string  – specific source to fetch (omit for all)
- *   limit?      number  – max items to return (default 20, max 50)
- */
-const getHotestLatestNews = {
-  name: 'get_hotest_latest_news',
-  description:
-    'Fetch hottest/latest news items from cache. Optionally filter by source_id and limit the number of results.',
-  handler: async function (args, ctx) {
-    const sourceId = args.source_id || null;
-    const rawLimit = Number(args.limit) || 20;
-    const limit = Math.min(Math.max(1, rawLimit), 50);
-
-    let items = [];
-
-    if (sourceId) {
-      // Fetch a single source
-      const data = await ctx.feedService.getFeedsBySource(sourceId);
-      if (Array.isArray(data)) {
-        items = data;
+function parseApiKeySourceIds(apiKey) {
+  if (!apiKey) return [];
+  const value = apiKey.source_scope;
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '')).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value || '[]');
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => String(item || '')).filter(Boolean);
       }
-    } else {
-      // Fetch all sources and flatten
-      const feeds = await ctx.feedService.getFeeds();
-      for (const feed of feeds) {
-        if (Array.isArray(feed.data)) {
-          items = items.concat(feed.data);
-        }
-      }
+    } catch (_err) {
+      return [];
     }
+  }
+  return [];
+}
 
-    // Apply limit
-    items = items.slice(0, limit);
+function clampMaxCount(value, fallback = 12) {
+  return Math.min(30, Math.max(1, Number(value) || fallback));
+}
 
-    // Normalise output to { title, url, date?, source_id? }
-    return items.map((item) => ({
-      title: item.title || 'Untitled',
-      url: item.url || '',
-      date: item.date || null,
-      source_id: item.source || sourceId || null,
-    }));
-  },
-};
+function buildTopicId(sourceId, index, title, url) {
+  return `${sourceId || 'unknown'}:${index}:${String(title || '').trim()}:${String(url || '').trim()}`;
+}
 
-/**
- * Exported tool list.  The McpServer iterates over this to register routes.
- */
-const tools = [getAvailableSources, getHotestLatestNews];
+function createMcpSdkServer({ sourceService, feedService, apiKey }) {
+  const server = new McpServer(
+    {
+      name: 'kNews',
+      version: '0.1.0',
+    },
+    { capabilities: { logging: {} } },
+  );
 
-module.exports = tools;
+  server.tool(
+    'get_available_sources',
+    'Return source ids allowed for current API key and max_count limit.',
+    {},
+    async () => {
+      const sources = await sourceService.getSources();
+      const allowedSourceIds = parseApiKeySourceIds(apiKey);
+      const allowedSet = allowedSourceIds.length ? new Set(allowedSourceIds) : null;
+      const filteredSources = allowedSet
+        ? sources.filter((item) => allowedSet.has(item.id))
+        : sources;
+      const maxCount = clampMaxCount(apiKey?.max_count, 12);
+      const lines = filteredSources.map((item) => `${item.id}: ${item.name}`);
+
+      return {
+        structuredContent: {
+          maxCount,
+          sources: filteredSources.map((item) => ({
+            id: item.id,
+            name: item.name,
+          })),
+        },
+        content: [
+          {
+            type: 'text',
+            text: lines.length
+              ? `Available sources (max_count=${maxCount}):\n${lines.join('\n')}`
+              : `No available sources. max_count=${maxCount}`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    'get_hotest_latest_news',
+    'Fetch hottest/latest news for a source id returned by get_available_sources.',
+    {
+      id: z.string().describe('source id, e.g. weibo / github / toutiao'),
+      count: z.any().default(10).describe('requested item count, capped by API key max_count'),
+    },
+    async ({ id, count }) => {
+      const allowedSourceIds = parseApiKeySourceIds(apiKey);
+      if (allowedSourceIds.length && !allowedSourceIds.includes(id)) {
+        return {
+          content: [{ type: 'text', text: `Source is not allowed by current API key: ${id}` }],
+        };
+      }
+
+      const requestedLimit = clampMaxCount(count, 10);
+      const keyMaxCount = clampMaxCount(apiKey?.max_count, 12);
+      const limit = Math.min(requestedLimit, keyMaxCount);
+      const data = await feedService.getFeedsBySource(id);
+      const sources = await sourceService.getSources();
+      const sourceName = sources.find((item) => item.id === id)?.name || id;
+      const items = (Array.isArray(data) ? data : [])
+        .map((item, index) => ({
+          id: buildTopicId(id, index, item.title, item.url),
+          title: item.title || 'Untitled',
+          url: item.url || '',
+          publishedAt: item.date || '',
+          sourceId: item.source || id,
+          sourceName,
+        }))
+        .filter((item) => item.url)
+        .slice(0, limit);
+
+      if (!items.length) {
+        return {
+          content: [{ type: 'text', text: `No items from source ${id}` }],
+        };
+      }
+
+      const text = items
+        .map((item) => `- [${item.title}](${item.url})${item.publishedAt ? ` (${item.publishedAt})` : ''}`)
+        .join('\n');
+
+      return {
+        structuredContent: {
+          sourceId: id,
+          sourceName,
+          items,
+        },
+        content: [{ type: 'text', text }],
+      };
+    },
+  );
+
+  server.server.onerror = console.error.bind(console);
+  return server;
+}
+
+module.exports = { createMcpSdkServer };

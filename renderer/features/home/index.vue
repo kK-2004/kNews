@@ -1,6 +1,20 @@
 <template>
   <section class="home-board" @wheel.passive="onHomeWheel">
     <p v-if="error" class="error">{{ error }}</p>
+
+    <header class="home-header">
+      <div>
+        <h1 class="home-title">
+          热点情报矩阵
+          <span class="live-dot-wrap">
+            <span class="live-dot-ping"></span>
+            <span class="live-dot"></span>
+          </span>
+        </h1>
+        <p class="home-subtitle">聚合全网关键信号源，帮助你更快浏览热点、时事与重点关注内容。</p>
+      </div>
+    </header>
+
     <div v-if="activeTab === 'china'" class="more-filter-bar">
       <base-input v-model="moreKeyword" placeholder="搜索数据源" />
       <el-select
@@ -98,7 +112,7 @@
 </template>
 
 <script setup>
-import { computed, inject, nextTick, onMounted, onServerPrefetch, onUnmounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, onServerPrefetch, onUnmounted, provide, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useDebounceFn } from '@vueuse/core'
 import BaseSkeleton from '@/shared/components/base-skeleton.vue'
@@ -126,6 +140,11 @@ const homeBoardStore = useHomeBoardStore()
 const { boards, allSelectedSources, loading, error, lastBuiltTab } = storeToRefs(homeBoardStore)
 const ssrOrigin = inject('ssrOrigin', '')
 const route = useRoute()
+
+// Shared time source for source-board relative time labels
+const timeNow = ref(Date.now())
+let timeTicker = null
+provide('timeNow', timeNow)
 const activeTab = computed(() => {
   const tab = String(route.query.tab || 'hottest')
   return ['china', 'focus', 'hottest', 'realtime'].includes(tab) ? tab : 'hottest'
@@ -288,6 +307,7 @@ const apiUrl = (path) => {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+let buildRequestId = 0
 
 const requestJsonWithRetry = async (url, { retries = 2, delay = 220 } = {}) => {
   let lastError
@@ -369,13 +389,14 @@ const toBoard = (source, idx, result) => ({
   accent: resolveColor(source.color || sourcesMap?.[source.id]?.color, palette[idx % palette.length])
 })
 
-const appendBoards = async ({ latest = false, count = LOAD_MORE_SIZE } = {}) => {
+const appendBoards = async ({ latest = false, count = LOAD_MORE_SIZE, requestId = 0 } = {}) => {
   const start = boards.value.length
   const end = Math.min(start + count, allSelectedSources.value.length)
   if (end <= start) return false
 
   const chunk = allSelectedSources.value.slice(start, end)
   const results = await Promise.allSettled(chunk.map((source) => fetchSourceItems(source.id, { latest })))
+  if (requestId && requestId !== buildRequestId) return false
   const appended = chunk.map((source, offset) => toBoard(source, start + offset, results[offset]))
   homeBoardStore.setBoards([...boards.value, ...appended])
   return true
@@ -438,10 +459,16 @@ const resolveSelectedSources = (enabled) => {
   return selected
 }
 
-const buildBoards = async ({ runSilentRefresh = true } = {}) => {
+const buildBoards = async ({ immediateSkeleton = false } = {}) => {
+  const requestId = ++buildRequestId
   homeBoardStore.setError('')
+  if (immediateSkeleton) {
+    homeBoardStore.setBoards([])
+    homeBoardStore.setLoading(true)
+  }
   try {
     const sources = await fetchSourcesList()
+    if (requestId !== buildRequestId) return
     const enabled = (sources || []).filter((s) => normalizeEnabled(s.enabled))
     const selected = resolveSelectedSources(enabled)
     homeBoardStore.setAllSelectedSources(selected)
@@ -456,13 +483,14 @@ const buildBoards = async ({ runSilentRefresh = true } = {}) => {
     // Batch fetch cached feeds in one IPC call
     const batchIds = selected.slice(0, INITIAL_LOAD_SIZE).map((s) => s.id)
     const batchData = await fetchBatchSourceItems(batchIds)
+    if (requestId !== buildRequestId) return
     const chunk = selected.slice(0, INITIAL_LOAD_SIZE)
     const hasAllCached = chunk.every((source) => {
       const items = batchData[source.id]
       return Array.isArray(items) && items.length > 0
     })
 
-    if (hasAllCached) {
+    if (hasAllCached && !immediateSkeleton) {
       // Show cached data immediately, fetch missing in background
       const batchBoards = chunk.map((source, idx) => {
         const items = batchData[source.id] || []
@@ -474,12 +502,14 @@ const buildBoards = async ({ runSilentRefresh = true } = {}) => {
       // Nothing cached — show skeleton, fetch normally
       homeBoardStore.setBoards([])
       homeBoardStore.setLoading(true)
-      await appendBoards({ latest: false, count: INITIAL_LOAD_SIZE })
+      await appendBoards({ latest: false, count: INITIAL_LOAD_SIZE, requestId })
+      if (requestId !== buildRequestId) return
       homeBoardStore.setLoading(false)
     }
 
     homeBoardStore.setLastBuiltTab(activeTab.value)
   } catch (err) {
+    if (requestId !== buildRequestId) return
     homeBoardStore.setError(err instanceof Error ? err.message : 'Failed to load source boards')
     homeBoardStore.setLoading(false)
   }
@@ -663,18 +693,18 @@ watch(activeTab, () => {
   } else {
     debouncedKeyword.value = String(moreKeyword.value || '')
   }
-  buildBoards()
+  buildBoards({ immediateSkeleton: true })
 })
 
 watch(moreCategory, () => {
   if (activeTab.value !== 'china') return
-  buildBoards()
+  buildBoards({ immediateSkeleton: true })
 })
 
 const debouncedUpdateKeyword = useDebounceFn(() => {
   debouncedKeyword.value = String(moreKeyword.value || '')
   if (activeTab.value !== 'china') return
-  buildBoards()
+  buildBoards({ immediateSkeleton: true })
 }, 220)
 
 watch(moreKeyword, () => {
@@ -696,6 +726,7 @@ watch(() => userStore.authToken, async (newToken) => {
 
 onMounted(() => {
   window.addEventListener('knews:refresh-feed', onGlobalRefresh)
+  timeTicker = setInterval(() => { timeNow.value = Date.now() }, 60_000)
   loadPreferences().then(async () => {
     const hasHydratedBoards = boards.value.length > 0 && lastBuiltTab.value === activeTab.value
     const hasLocalOverrides = orderedSourceIds.value.length > 0
@@ -709,6 +740,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('knews:refresh-feed', onGlobalRefresh)
+  if (timeTicker) { clearInterval(timeTicker); timeTicker = null }
 })
 
 onServerPrefetch(async () => {
@@ -722,22 +754,77 @@ onServerPrefetch(async () => {
 .home-board {
   display: grid;
   gap: 0.95rem;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   overflow: hidden;
   width: 100%;
-  padding-left: 20px;
-  padding-right: 20px;
+  padding: 0 0.5rem;
+}
+
+.home-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.25rem;
+}
+
+.home-title {
+  align-items: center;
+  display: flex;
+  font-size: 1.6rem;
+  font-weight: 800;
+  gap: 0.5rem;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.live-dot-wrap {
+  display: inline-flex;
+  height: 0.6rem;
+  position: relative;
+  width: 0.6rem;
+}
+
+.live-dot-ping {
+  animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+  border-radius: 999px;
+  height: 100%;
+  position: absolute;
+  width: 100%;
+  background: var(--tertiary);
+  opacity: 0.6;
+}
+
+.live-dot {
+  background: var(--tertiary);
+  border-radius: 999px;
+  height: 100%;
+  position: relative;
+  width: 100%;
+}
+
+@keyframes ping {
+  75%, 100% { transform: scale(2.5); opacity: 0; }
+}
+
+.home-subtitle {
+  color: var(--on-surface-variant);
+  font-size: 0.85rem;
+  margin: 0.35rem 0 0;
+  max-width: 40rem;
 }
 
 .more-filter-bar {
   align-items: center;
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
-  border-radius: 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   display: flex;
   gap: 0.75rem;
-  padding: 0.65rem;
+  padding: 0.5rem;
+  box-shadow: var(--shadow-sm);
 }
 
 .more-filter-bar :deep(.field) {
@@ -752,21 +839,21 @@ onServerPrefetch(async () => {
 
 .more-filter-bar :deep(.input),
 .more-filter-bar :deep(select) {
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  background: var(--surface-container-low);
   border: none !important;
-  border-radius: 0.6rem;
+  border-radius: var(--radius);
   box-shadow: none !important;
   color: var(--text);
   min-height: 2.25rem;
 }
 
 .more-filter-bar :deep(.input::placeholder) {
-  color: color-mix(in srgb, var(--muted) 88%, var(--text));
+  color: var(--on-surface-variant);
 }
 
 .more-filter-bar :deep(.input:focus),
 .more-filter-bar :deep(select:focus) {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #0b63ff 36%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 36%, transparent);
   outline: none;
 }
 
@@ -790,10 +877,11 @@ onServerPrefetch(async () => {
     flex: 1 1 auto;
   }
 }
+
 .board-grid {
   display: grid;
   flex: 1 1 auto;
-  gap: 1rem;
+  gap: 1.25rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: minmax(31rem, 31rem);
   height: 100%;
@@ -812,19 +900,22 @@ onServerPrefetch(async () => {
 .board-move {
   transition: transform 0.16s ease;
 }
+
 @media (min-width: 900px) {
   .board-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
 @media (min-width: 1280px) {
   .board-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
 .loading-grid {
   display: grid;
-  gap: 1rem;
+  gap: 1.25rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: minmax(31rem, 31rem);
   height: 100%;
@@ -846,18 +937,25 @@ onServerPrefetch(async () => {
 
 @media (min-width: 1280px) {
   .loading-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 .board-skeleton {
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 1.1rem;
+  border-radius: var(--radius-lg);
   display: grid;
   gap: 0.8rem;
   height: 31rem;
   max-height: 31rem;
-  padding: 0.85rem;
+  padding: 1.25rem;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 .board-skeleton-head {
@@ -869,38 +967,38 @@ onServerPrefetch(async () => {
 .board-skeleton-brand {
   align-items: center;
   display: inline-flex;
-  gap: 0.45rem;
+  gap: 0.5rem;
 }
 
 .board-skeleton-ops {
   align-items: center;
   display: inline-flex;
-  gap: 0.45rem;
+  gap: 0.5rem;
 }
 
 .board-skeleton-list {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.5rem;
   overflow: hidden;
 }
 
 .board-skeleton-row {
   align-items: center;
-  border: 1px solid var(--border);
-  border-radius: 0.65rem;
+  border: none;
+  border-radius: 2px;
   display: grid;
-  gap: 0.45rem;
-  grid-template-columns: 1.65rem minmax(0, 1fr);
-  min-height: 3rem;
-  padding: 0.38rem 0.5rem;
+  gap: 0.5rem;
+  grid-template-columns: 1.8rem minmax(0, 1fr);
+  min-height: 2.5rem;
+  padding: 0.4rem;
 }
 
-.s-icon { border-radius: 999px; height: 2rem; width: 2rem; }
-.s-title { height: 1.45rem; width: 7.5rem; }
-.s-badge { height: 1rem; width: 3.25rem; }
-.s-op { border-radius: 999px; height: 1.8rem; width: 1.8rem; }
-.s-updated { height: 0.9rem; width: 5.4rem; }
-.s-rank { border-radius: 0.5rem; height: 2rem; width: 1.65rem; }
-.s-line { height: 1.2rem; width: 100%; }
-.error { color: #d92d20; }
+.s-icon { border-radius: var(--radius); height: 2.5rem; width: 2.5rem; }
+.s-title { height: 1.1rem; width: 7rem; }
+.s-badge { height: 0.9rem; width: 3rem; }
+.s-op { border-radius: var(--radius); height: 2rem; width: 2rem; }
+.s-updated { height: 0.75rem; width: 5rem; }
+.s-rank { border-radius: 2px; height: 1.5rem; width: 1.8rem; }
+.s-line { height: 0.85rem; width: 100%; }
+.error { color: var(--error); }
 </style>

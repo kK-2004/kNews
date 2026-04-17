@@ -34,7 +34,7 @@ class LocalCacheRepository {
    * @returns {string}
    */
   _filePath(sourceId) {
-    return path.join(this.cacheDir, `${sourceId}.json`);
+    return path.join(this.cacheDir, `${encodeURIComponent(String(sourceId || ''))}.json`);
   }
 
   /**

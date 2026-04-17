@@ -26,7 +26,11 @@
       </div>
     </div>
 
-    <div v-if="users.length === 0" class="empty-state">
+    <div v-if="loading" class="empty-state">
+      <span class="loading-spinner" />
+      <p>加载中…</p>
+    </div>
+    <div v-else-if="users.length === 0" class="empty-state">
       <p>暂无用户数据</p>
     </div>
 
@@ -95,7 +99,7 @@
           <div class="key-main">
             <p class="key-name">{{ key.name || '未命名 Key' }}</p>
             <div class="key-stats">
-              <span class="key-stat">限流: {{ key.rateLimitRph || '-' }}/h</span>
+              <span class="key-stat">限流: {{ formatRateLimit(key.rateLimitRph) }}</span>
               <span class="key-stat">调用: {{ key.callCount || 0 }}</span>
               <span class="key-stat">最后: {{ formatLastUsed(key.lastUsed) }}</span>
             </div>
@@ -125,6 +129,7 @@ const adminApi = useAdminApi()
 const username = ref('')
 const status = ref('')
 const users = ref([])
+const loading = ref(true)
 const loginAudits = ref([])
 const drawerVisible = ref(false)
 const userKeys = ref([])
@@ -134,16 +139,21 @@ const totalPages = ref(1)
 const totalItems = ref(0)
 
 const load = async () => {
-  const res = await adminApi.listUsers({
-    username: username.value,
-    status: status.value,
-    page: currentPage.value,
-    pageSize: pageSize.value
-  })
-  users.value = Array.isArray(res?.users) ? res.users : []
-  loginAudits.value = Array.isArray(res?.loginAudits) ? res.loginAudits : []
-  totalPages.value = res?.pagination?.totalPages || 1
-  totalItems.value = res?.pagination?.total || 0
+  loading.value = true
+  try {
+    const res = await adminApi.listUsers({
+      username: username.value,
+      status: status.value,
+      page: currentPage.value,
+      pageSize: pageSize.value
+    })
+    users.value = Array.isArray(res?.users) ? res.users : []
+    loginAudits.value = Array.isArray(res?.loginAudits) ? res.loginAudits : []
+    totalPages.value = res?.pagination?.totalPages || 1
+    totalItems.value = res?.pagination?.total || 0
+  } finally {
+    loading.value = false
+  }
 }
 
 const debouncedLoad = useDebounceFn(() => {
@@ -207,6 +217,12 @@ const formatLastActive = (value) => {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+const formatRateLimit = (value) => {
+  const rate = Number(value)
+  if (!Number.isFinite(rate) || rate < 0) return '不限'
+  return `${rate}/h`
 }
 
 const formatDate = (value) => {
@@ -290,7 +306,7 @@ onMounted(load)
 }
 
 .filter-inputs :deep(.username-input .input:focus) {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #0b63ff 36%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 36%, transparent);
 }
 
 .filter-inputs :deep(.status-select) {
@@ -307,6 +323,23 @@ onMounted(load)
   color: var(--muted);
   text-align: center;
   padding: 2rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.loading-spinner {
+  animation: spin 0.8s linear infinite;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  height: 16px;
+  width: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .empty-state p {
@@ -314,8 +347,9 @@ onMounted(load)
 }
 
 .table-container {
+  background: var(--surface-container-low);
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-lg);
   overflow-x: auto;
 }
 
@@ -326,67 +360,73 @@ onMounted(load)
 
 .users-table th,
 .users-table td {
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 1.1rem;
   text-align: left;
-  text-align: center;      /* 水平居中 */
-  vertical-align: middle;  /* 垂直居中 */
+  vertical-align: middle;
 }
 
 .users-table th {
-  background: color-mix(in srgb, var(--muted) 10%, transparent);
-  border-bottom: 2px solid var(--border);
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: var(--muted);
+  background: var(--surface-container-high);
+  border-bottom: 1px solid var(--border);
+  color: var(--on-surface-variant);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .users-table td {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
   font-size: 0.9rem;
 }
 
 .users-table tr:last-child td {
   border-bottom: none;
-  text-align: center;      /* 水平居中 */
-  vertical-align: middle;  /* 垂直居中 */
+}
+
+.users-table tbody tr {
+  transition: background 0.15s;
 }
 
 .users-table tbody tr:hover {
-  background: color-mix(in srgb, var(--muted) 5%, transparent);
+  background: var(--surface-container);
 }
 
 .badge {
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  padding: 0.25rem 0.65rem;
+  padding: 0.2rem 0.6rem;
   display: inline-block;
+  letter-spacing: 0.02em;
 }
 
 .badge.normal {
-  background: color-mix(in srgb, #10b981 16%, transparent);
+  background: color-mix(in srgb, #10b981 14%, transparent);
   color: #10b981;
 }
 
 .badge.blacklist {
-  background: color-mix(in srgb, #ef4444 16%, transparent);
-  color: #ef4444;
+  background: color-mix(in srgb, var(--error) 14%, transparent);
+  color: var(--error);
 }
 
 .action-btn {
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: 0.4rem;
+  border-radius: var(--radius);
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 500;
   margin-right: 0.4rem;
-  padding: 0.35rem 0.65rem;
-  transition: all 0.16s ease;
+  padding: 0.3rem 0.6rem;
+  transition: all 0.15s ease;
+  color: var(--text);
 }
 
 .action-btn:hover {
-  background: color-mix(in srgb, var(--muted) 10%, transparent);
-  border-color: color-mix(in srgb, #0b63ff 30%, var(--border));
+  background: var(--surface-container-high);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
 }
 
 .action-btn.btn-secondary:hover {
@@ -394,7 +434,7 @@ onMounted(load)
 }
 
 .action-btn.btn-danger:hover {
-  border-color: color-mix(in srgb, #ef4444 30%, var(--border));
+  border-color: color-mix(in srgb, var(--error) 30%, var(--border));
 }
 
 .pagination {
@@ -408,15 +448,17 @@ onMounted(load)
 .pagination button {
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: var(--radius);
   cursor: pointer;
-  padding: 0.5rem 1rem;
-  transition: all 0.16s ease;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  transition: all 0.15s ease;
 }
 
 .pagination button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--muted) 10%, transparent);
-  border-color: color-mix(in srgb, #0b63ff 30%, var(--border));
+  background: var(--surface-container-high);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
 }
 
 .pagination button:disabled {
@@ -446,12 +488,18 @@ onMounted(load)
 
 .audit-item {
   align-items: center;
+  background: var(--surface-container-low);
   border: 1px solid var(--border);
-  border-radius: 0.6rem;
+  border-radius: var(--radius-lg);
   display: grid;
   gap: 0.6rem;
   grid-template-columns: 1fr auto;
-  padding: 0.6rem 0.8rem;
+  padding: 0.7rem 1rem;
+  transition: background 0.15s;
+}
+
+.audit-item:hover {
+  background: var(--surface-container);
 }
 
 .audit-user {
@@ -488,9 +536,15 @@ onMounted(load)
 }
 
 .key-item {
+  background: var(--surface-container-low);
   border: 1px solid var(--border);
-  border-radius: 0.6rem;
-  padding: 0.7rem;
+  border-radius: var(--radius-lg);
+  padding: 0.8rem 1rem;
+  transition: background 0.15s;
+}
+
+.key-item:hover {
+  background: var(--surface-container);
 }
 
 .key-name {
@@ -544,7 +598,7 @@ onMounted(load)
   }
 
   .table-container {
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
   }
 
   .action-btn {
