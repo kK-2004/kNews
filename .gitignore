@@ -7,4 +7,5 @@ renderer-dist
 dist
 openspec/
 .claude/
+.agents/
 .codex/

@@ -22,6 +22,7 @@ const { register: registerChatHandlers } = require('./ipc/chat.handler');
 
 let mainWindow = null;
 let instances = null;
+const appIconPath = path.join(__dirname, '..', 'renderer-dist', 'logo.png');
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -29,6 +30,7 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 700,
+    icon: appIconPath,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true,
@@ -244,6 +246,10 @@ app.whenReady().then(async () => {
     dialog.showErrorBox('Startup Error', err.message);
     app.quit();
     return;
+  }
+
+  if (process.platform === 'darwin' && app.dock) {
+    app.dock.setIcon(appIconPath);
   }
 
   createWindow();

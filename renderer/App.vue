@@ -13,7 +13,7 @@
       </button>
       <RouterLink class="header-brand" to="/">
         <div class="sidebar-head">
-          <div class="sidebar-logo">K</div>
+          <img class="sidebar-logo" src="/logo.png" alt="kNews logo" />
           <div>
             <div class="sidebar-brand">K-News</div>
           </div>
@@ -568,14 +568,9 @@ onUnmounted(() => {
   width: 2rem;
   height: 2rem;
   border-radius: var(--radius);
-  background: var(--primary-container);
-  color: var(--primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 0.9rem;
+  display: block;
   flex-shrink: 0;
+  object-fit: cover;
 }
 
 .sidebar-brand {
