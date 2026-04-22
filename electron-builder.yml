@@ -3,6 +3,9 @@ productName: kNews
 directories:
   buildResources: build
   output: dist
+extraResources:
+  - from: .env.production
+    to: .env.production
 files:
   - main/**/*
   - preload/**/*

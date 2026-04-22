@@ -1,10 +1,35 @@
 'use strict';
 
 const { app, BrowserWindow, dialog } = require('electron');
+const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const dotenv = require('dotenv');
 
-require('dotenv').config({ path: path.resolve(process.cwd(), `.env${process.env.NODE_ENV ? `.${process.env.NODE_ENV}` : ''}`) });
+function loadEnvironment() {
+  const envName = process.env.NODE_ENV || (app.isPackaged ? 'production' : '');
+  const envFiles = envName
+    ? [`.env.${envName}`, '.env']
+    : ['.env'];
+  const searchRoots = app.isPackaged
+    ? [process.resourcesPath, path.dirname(process.execPath), process.cwd()]
+    : [process.cwd()];
+
+  for (const root of searchRoots) {
+    for (const envFile of envFiles) {
+      const envPath = path.join(root, envFile);
+      if (!fs.existsSync(envPath)) continue;
+      dotenv.config({ path: envPath });
+      console.log(`[env] Loaded environment from ${envPath}`);
+      return envPath;
+    }
+  }
+
+  console.warn('[env] No .env file found in expected locations.');
+  return null;
+}
+
+loadEnvironment();
 
 const { bootstrap } = require('./bootstrap');
 
