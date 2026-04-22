@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>K_LINK</title>
+  </head>
+  <body style="margin:0; padding:0; background-color:#f3f6fb; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#111827;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%; background-color:#f3f6fb; margin:0; padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px; width:100%;">
+            
+            <!-- Header -->
+            <tr>
+              <td style="padding:0 0 12px 0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc; border:1px solid #e5e7eb; border-bottom:none; border-radius:12px 12px 0 0;">
+                  <tr>
+                    <td style="padding:20px 24px; font-size:18px; font-weight:700; color:#0f172a; letter-spacing:-0.02em;">
+                      您正在登录kNews!
+                    </td>
+                    <td align="right" style="padding:20px 24px; font-size:14px; color:#2563eb; font-weight:600;">
+                      安全登录
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Main Card -->
+            <tr>
+              <td>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#ffffff; border:1px solid #e5e7eb; border-radius:0 0 12px 12px;">
+                  <tr>
+                    <td style="padding:36px 32px 24px 32px;">
+                      <div style="width:48px; height:48px; line-height:48px; text-align:center; border-radius:9999px; background-color:#e8f0ff; color:#2563eb; font-size:22px; font-weight:700;">
+                        ✦
+                      </div>
+
+                      <h1 style="margin:20px 0 12px 0; font-size:28px; line-height:1.25; font-weight:700; color:#111827;">
+                        K-LINK
+                      </h1>
+
+                      <p style="margin:0 0 24px 0; font-size:15px; line-height:1.7; color:#4b5563;">
+                        请点击下方按钮以登录/注册您的账户。
+                      </p>
+
+                      <!-- Button -->
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px 0;">
+                        <tr>
+                          <td bgcolor="#2563eb" style="border-radius:8px;">
+                            <a
+                              href="{{ .ConfirmationURL }}"
+                              style="display:inline-block; padding:12px 22px; font-size:14px; line-height:1; font-weight:600; color:#ffffff; text-decoration:none; border-radius:8px; background-color:#2563eb;"
+                            >
+                              一键登录/注册
+                            </a>
+                          </td>
+                        </tr>
+                      </table>
+
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 16px 0; background-color:#fff7ed; border:1px solid #fdba74; border-left:4px solid #f97316; border-radius:8px;">
+                        <tr>
+                          <td style="padding:14px 16px;">
+                            <p style="margin:0 0 8px 0; font-size:13px; line-height:1.7; font-weight:700; color:#9a3412;">
+                              重要提示
+                            </p>
+                            <p style="margin:0 0 8px 0; font-size:14px; line-height:1.7; color:#9a3412;">
+                              该链接仅在发起登录请求的电脑浏览器中有效。
+                            </p>
+                            <p style="margin:0 0 8px 0; font-size:14px; line-height:1.7; color:#9a3412;">
+                              如您正在使用手机或其他设备查看此邮件，请复制下方链接，并在登录时使用的电脑浏览器中打开。
+                            </p>
+                            <p style="margin:0; font-size:14px; line-height:1.7; color:#9a3412;">
+                              此链接将在 10 分钟内失效，并且只能使用一次。
+                            </p>
+                          </td>
+                        </tr>
+                      </table>
+                      <p style="margin:0; font-size:14px; line-height:1.7; color:#6b7280;">
+                        如果您并未请求此登录链接，请忽略此邮件。
+                      </p>
+                    </td>
+                  </tr>
+
+                  <!-- Info Box -->
+                  <tr>
+                    <td style="padding:0 32px 24px 32px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc; border:1px solid #e5e7eb; border-left:4px solid #93c5fd; border-radius:10px;">
+                        <tr>
+                          <td style="padding:16px 18px;">
+                            <p style="margin:0 0 6px 0; font-size:13px; font-weight:700; color:#111827;">
+                              安全提示
+                            </p>
+                            <p style="margin:0; font-size:13px; line-height:1.7; color:#6b7280;">
+                              为了您的账户安全，请勿将此邮件转发给他人。
+                            </p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+
+                  <!-- Fallback Link -->
+                  <tr>
+                    <td style="padding:0 32px 32px 32px;">
+                      <div style="height:1px; background-color:#e5e7eb; margin:0 0 20px 0;"></div>
+                      <p style="margin:0 0 8px 0; font-size:12px; line-height:1.6; color:#9ca3af;">
+                        如果按钮无法点击，请复制下面的链接到浏览器打开：
+                      </p>
+                      <p style="margin:0; font-size:12px; line-height:1.7; word-break:break-all;">
+                        <a href="{{ .ConfirmationURL }}" style="color:#6b7280; text-decoration:underline;">
+                          {{ .ConfirmationURL }}
+                        </a>
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td style="padding:16px 8px 0 8px; text-align:center;">
+                <p style="margin:0; font-size:12px; line-height:1.6; color:#9ca3af;">
+                  这是一封系统邮件，请勿直接回复。
+                </p>
+              </td>
+            </tr>
+
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

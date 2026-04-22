@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+
+<html class="" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Admin Analytics Screen - The Intelligence Terminal</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"tertiary-fixed-dim": "#cabded", "inverse-on-surface": "#9c9da1", "on-primary-fixed": "#0c3157", "primary-fixed": "#afcefd", outline: "#777b83", "inverse-primary": "#afcefd", "secondary-container": "#d8e3f8", "surface-bright": "#f9f9fe", "tertiary-fixed": "#d8cafb", "on-primary-container": "#25456c", "surface-container-lowest": "#ffffff", "primary-container": "#afcefd", background: "#f9f9fe", secondary: "#556071", "on-secondary": "#f8f8ff", "surface-container-low": "#f2f3fa", "error-container": "#fa746f", "tertiary-container": "#d8cafb", tertiary: "#635983", surface: "#f9f9fe", "on-tertiary-fixed-variant": "#554a74", "on-tertiary-fixed": "#382e55", "on-secondary-fixed-variant": "#515c6e", "secondary-fixed": "#d8e3f8", "surface-variant": "#dfe2ec", "secondary-fixed-dim": "#cad5ea", "surface-container-highest": "#dfe2ec", "on-error-container": "#6e0a12", "outline-variant": "#aeb2bb", "on-error": "#fff7f6", "on-background": "#2e333a", "surface-tint": "#426089", "on-secondary-container": "#475263", "on-primary-fixed-variant": "#2f4e76", "on-surface": "#2e333a", "inverse-surface": "#0c0e12", "on-tertiary": "#fdf7ff", "surface-container-high": "#e6e8f0", "on-secondary-fixed": "#354050", primary: "#426089", "primary-fixed-dim": "#a1c0ee", "surface-container": "#eceef5", "surface-dim": "#d6dae4", "on-surface-variant": "#5b5f67", error: "#a83836", "on-tertiary-container": "#4b416a", "on-primary": "#f8f8ff", "error-dim": "#67040d", "primary-dim": "#35547d", "tertiary-dim": "#574d76", "secondary-dim": "#495465"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, fontFamily: {headline: ["Inter"], body: ["Inter"], label: ["Inter"], display: "Inter"}}}};</script>
+<style>
+        body { font-family: 'Work Sans', sans-serif; }
+        .font-headline { font-family: 'Manrope', sans-serif; }
+        .font-label { font-family: 'Space Grotesk', monospace; }
+        /* Tonal Layering Utilities */
+        .glass-panel { background: rgba(50, 53, 55, 0.6); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+        .ambient-shadow { box-shadow: 0 0 48px rgba(225, 226, 229, 0.06); }
+        .ghost-border { border: 1px solid rgba(65, 72, 78, 0.15); }
+    </style>
+</head>
+<body class="bg-background text-on-surface antialiased flex h-screen overflow-hidden">
+<!-- SideNavBar (Shared Component) -->
+<nav aria-label="Sidebar" class="h-full w-64 fixed left-0 top-0 bg-slate-950 text-sky-500 font-['Work_Sans'] text-sm font-medium flex flex-col py-6 bg-slate-900 tonal shift flat no shadows transition-all duration-200 ease-in-out z-40 hidden md:flex">
+<!-- Header -->
+<div class="px-6 mb-8 flex flex-col gap-2">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-primary-container flex items-center justify-center text-primary font-headline font-bold">K</div>
+<h1 class="font-['Manrope'] font-bold text-lg text-slate-100 leading-tight">The Intelligence Terminal</h1>
+</div>
+<span class="font-label text-xs text-on-surface-variant/60 ml-11">v2.4.0</span>
+</div>
+<!-- Main Navigation -->
+<div class="flex flex-col gap-1 flex-1 px-2">
+<a class="text-slate-500 px-4 py-3 flex items-center gap-3 hover:bg-slate-800/50 hover:text-slate-200 rounded-DEFAULT" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="terminal">terminal</span>
+                Terminal
+            </a>
+<a class="text-slate-500 px-4 py-3 flex items-center gap-3 hover:bg-slate-800/50 hover:text-slate-200 rounded-DEFAULT" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="insights">insights</span>
+                Intelligence
+            </a>
+<a class="text-slate-500 px-4 py-3 flex items-center gap-3 hover:bg-slate-800/50 hover:text-slate-200 rounded-DEFAULT" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="source">source</span>
+                Sources
+            </a>
+<a class="text-slate-500 px-4 py-3 flex items-center gap-3 hover:bg-slate-800/50 hover:text-slate-200 rounded-DEFAULT" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="inventory_2">inventory_2</span>
+                Archive
+            </a>
+</div>
+<!-- Footer Navigation -->
+<div class="flex flex-col gap-1 px-2 mt-auto">
+<a class="text-slate-500 px-4 py-3 flex items-center gap-3 hover:bg-slate-800/50 hover:text-slate-200 rounded-DEFAULT" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="help">help</span>
+                Support
+            </a>
+<!-- Active State: Settings matches current context -->
+<a class="bg-sky-500/10 text-sky-400 border-r-2 border-sky-500 px-4 py-3 flex items-center gap-3 rounded-DEFAULT" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="settings">settings</span>
+                Settings
+            </a>
+</div>
+<div class="px-6 mt-6">
+<button class="w-full py-2.5 px-4 bg-primary text-on-primary rounded-sm font-medium hover:bg-primary/90 transition-colors">
+                New Analysis
+            </button>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-1 ml-0 md:ml-64 bg-surface-dim h-full overflow-y-auto relative flex flex-col">
+<!-- Top App Bar (Mobile View) -->
+<header class="md:hidden flex justify-between items-center px-6 h-16 w-full bg-slate-900/60 backdrop-blur-xl fixed top-0 z-50 text-sky-400 shadow-2xl shadow-black/20">
+<h1 class="text-2xl font-black text-slate-50 tracking-tighter font-headline">kNews</h1>
+<button class="text-slate-50">
+<span class="material-symbols-outlined">menu</span>
+</button>
+</header>
+<div class="p-8 md:p-10 lg:p-12 mt-16 md:mt-0 flex-1 flex flex-col gap-8 max-w-7xl mx-auto w-full">
+<!-- Page Header -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-2">
+<div>
+<h2 class="font-headline text-3xl font-bold text-on-surface tracking-tight mb-1">API Analytics</h2>
+<p class="text-on-surface-variant text-sm max-w-2xl">Monitor system usage, endpoint health, and authentication volume.</p>
+</div>
+<div class="flex items-center gap-3">
+<span class="font-label text-xs text-on-surface-variant flex items-center gap-2 bg-surface-container px-3 py-1.5 rounded-DEFAULT ghost-border">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span>
+                        System Nominal
+                    </span>
+<button class="bg-surface-container-high text-on-surface px-4 py-2 rounded-sm text-sm font-medium hover:bg-surface-variant transition-colors flex items-center gap-2 ghost-border">
+<span class="material-symbols-outlined text-sm" data-icon="download">download</span>
+                        Export Data
+                    </button>
+</div>
+</div>
+<!-- Top row of KPI cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<!-- Card 1 -->
+<div class="bg-surface-container-high rounded-lg p-6 flex flex-col gap-4 relative overflow-hidden ghost-border group">
+<div class="absolute inset-0 bg-gradient-to-br from-primary-container/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+<div class="flex justify-between items-start z-10">
+<span class="font-label text-xs tracking-wider text-on-surface-variant uppercase">Total API Keys</span>
+<span class="material-symbols-outlined text-primary/60 text-xl" data-icon="key">key</span>
+</div>
+<div class="z-10">
+<div class="font-headline text-4xl font-bold text-on-surface mb-1">1,204</div>
+<div class="flex items-center gap-2 text-xs">
+<span class="text-tertiary flex items-center"><span class="material-symbols-outlined text-[10px] mr-1" data-icon="arrow_upward">arrow_upward</span>4.2%</span>
+<span class="text-on-surface-variant font-label">vs last 30d</span>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface-container-high rounded-lg p-6 flex flex-col gap-4 relative overflow-hidden ghost-border group">
+<div class="absolute inset-0 bg-gradient-to-br from-primary-container/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+<div class="flex justify-between items-start z-10">
+<span class="font-label text-xs tracking-wider text-on-surface-variant uppercase">Total Calls (24h)</span>
+<span class="material-symbols-outlined text-primary/60 text-xl" data-icon="data_usage">data_usage</span>
+</div>
+<div class="z-10">
+<div class="font-headline text-4xl font-bold text-on-surface mb-1">842.5k</div>
+<div class="flex items-center gap-2 text-xs">
+<span class="text-tertiary flex items-center"><span class="material-symbols-outlined text-[10px] mr-1" data-icon="arrow_upward">arrow_upward</span>12.8%</span>
+<span class="text-on-surface-variant font-label">vs yesterday</span>
+</div>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="bg-surface-container-high rounded-lg p-6 flex flex-col gap-4 relative overflow-hidden ghost-border group">
+<div class="absolute inset-0 bg-gradient-to-br from-primary-container/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+<div class="flex justify-between items-start z-10">
+<span class="font-label text-xs tracking-wider text-on-surface-variant uppercase">Active Endpoints</span>
+<span class="material-symbols-outlined text-primary/60 text-xl" data-icon="router">router</span>
+</div>
+<div class="z-10">
+<div class="font-headline text-4xl font-bold text-on-surface mb-1">48<span class="text-on-surface-variant/50 text-xl font-normal ml-1">/52</span></div>
+<div class="flex items-center gap-2 text-xs">
+<span class="text-on-surface-variant font-label">92% utilization rate</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Middle row: Chart and Ranking -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-auto lg:h-80">
+<!-- Line Chart Area -->
+<div class="bg-surface-container-low rounded-lg p-6 lg:col-span-2 flex flex-col ghost-border relative">
+<div class="flex justify-between items-center mb-6">
+<h3 class="font-headline text-base font-bold text-on-surface">Hourly Call Volume</h3>
+<div class="flex gap-2">
+<button class="px-2 py-1 text-xs font-label bg-surface-container-high text-on-surface rounded-sm">24H</button>
+<button class="px-2 py-1 text-xs font-label text-on-surface-variant hover:text-on-surface rounded-sm">7D</button>
+<button class="px-2 py-1 text-xs font-label text-on-surface-variant hover:text-on-surface rounded-sm">30D</button>
+</div>
+</div>
+<!-- Abstract representation of a chart -->
+<div class="flex-1 relative flex items-end gap-1">
+<!-- Grid lines -->
+<div class="absolute inset-0 flex flex-col justify-between pointer-events-none">
+<div class="border-b border-outline-variant/10 w-full h-0"></div>
+<div class="border-b border-outline-variant/10 w-full h-0"></div>
+<div class="border-b border-outline-variant/10 w-full h-0"></div>
+<div class="border-b border-outline-variant/10 w-full h-0"></div>
+</div>
+<!-- Bars/Line proxy -->
+<div class="w-full h-full flex items-end justify-between px-2 pb-6 relative z-10">
+<!-- SVG for smooth line proxy -->
+<svg class="absolute inset-0 h-full w-full" preserveaspectratio="none" viewbox="0 0 100 100">
+<defs>
+<lineargradient id="lineGrad" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#97cdf6" stop-opacity="0.3"></stop>
+<stop offset="100%" stop-color="#97cdf6" stop-opacity="0"></stop>
+</lineargradient>
+</defs>
+<path d="M0,100 L0,70 Q10,60 20,65 T40,40 T60,50 T80,20 T100,30 L100,100 Z" fill="url(#lineGrad)"></path>
+<path d="M0,70 Q10,60 20,65 T40,40 T60,50 T80,20 T100,30" fill="none" stroke="#97cdf6" stroke-width="2" vector-effect="non-scaling-stroke"></path>
+</svg>
+</div>
+<!-- X axis labels -->
+<div class="absolute bottom-0 w-full flex justify-between px-2 font-label text-[10px] text-on-surface-variant">
+<span>00:00</span>
+<span>06:00</span>
+<span>12:00</span>
+<span>18:00</span>
+<span>Now</span>
+</div>
+</div>
+</div>
+<!-- Ranking List -->
+<div class="bg-surface-container-low rounded-lg p-6 flex flex-col ghost-border">
+<h3 class="font-headline text-base font-bold text-on-surface mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-sm" data-icon="local_fire_department">local_fire_department</span>
+                        Hot API Endpoints
+                    </h3>
+<div class="flex-1 flex flex-col gap-0">
+<!-- List Item 1 -->
+<div class="flex items-center justify-between py-3 group hover:bg-surface-container/50 px-2 -mx-2 rounded-sm transition-colors cursor-pointer">
+<div class="flex flex-col">
+<span class="font-label text-sm text-on-surface">/v1/intelligence/stream</span>
+<span class="text-xs text-on-surface-variant">324.2k calls</span>
+</div>
+<div class="w-16 h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[85%]"></div>
+</div>
+</div>
+<div class="h-[1px] w-full bg-outline-variant/10"></div>
+<!-- List Item 2 -->
+<div class="flex items-center justify-between py-3 group hover:bg-surface-container/50 px-2 -mx-2 rounded-sm transition-colors cursor-pointer">
+<div class="flex flex-col">
+<span class="font-label text-sm text-on-surface">/v2/market/summary</span>
+<span class="text-xs text-on-surface-variant">189.5k calls</span>
+</div>
+<div class="w-16 h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[60%]"></div>
+</div>
+</div>
+<div class="h-[1px] w-full bg-outline-variant/10"></div>
+<!-- List Item 3 -->
+<div class="flex items-center justify-between py-3 group hover:bg-surface-container/50 px-2 -mx-2 rounded-sm transition-colors cursor-pointer">
+<div class="flex flex-col">
+<span class="font-label text-sm text-on-surface">/v1/sources/verify</span>
+<span class="text-xs text-on-surface-variant">94.1k calls</span>
+</div>
+<div class="w-16 h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[45%]"></div>
+</div>
+</div>
+<div class="h-[1px] w-full bg-outline-variant/10"></div>
+<!-- List Item 4 -->
+<div class="flex items-center justify-between py-3 group hover:bg-surface-container/50 px-2 -mx-2 rounded-sm transition-colors cursor-pointer">
+<div class="flex flex-col">
+<span class="font-label text-sm text-on-surface">/v1/auth/token</span>
+<span class="text-xs text-on-surface-variant">42.8k calls</span>
+</div>
+<div class="w-16 h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary-container w-[20%]"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom: Details Table -->
+<div class="bg-surface-container-low rounded-lg flex flex-col ghost-border overflow-hidden">
+<div class="p-6 border-b border-outline-variant/10 flex justify-between items-center">
+<h3 class="font-headline text-base font-bold text-on-surface">Active Client Keys</h3>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm" data-icon="search">search</span>
+<input class="bg-surface-container border-0 rounded-sm py-1.5 pl-9 pr-3 text-sm font-label text-on-surface focus:ring-1 focus:ring-primary w-48 transition-all" placeholder="Search keys..." type="text"/>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container/30">
+<th class="py-3 px-6 font-label text-xs uppercase text-on-surface-variant font-medium tracking-wider w-1/4">Key Name</th>
+<th class="py-3 px-6 font-label text-xs uppercase text-on-surface-variant font-medium tracking-wider">Status</th>
+<th class="py-3 px-6 font-label text-xs uppercase text-on-surface-variant font-medium tracking-wider text-right">Calls (7d)</th>
+<th class="py-3 px-6 font-label text-xs uppercase text-on-surface-variant font-medium tracking-wider text-right">Quota</th>
+<th class="py-3 px-6 font-label text-xs uppercase text-on-surface-variant font-medium tracking-wider text-right">Last Used</th>
+<th class="py-3 px-6 font-label text-xs uppercase text-on-surface-variant font-medium tracking-wider text-center">Action</th>
+</tr>
+</thead>
+<tbody class="text-sm">
+<!-- Row 1 -->
+<tr class="border-b border-outline-variant/5 hover:bg-surface-container/20 transition-colors group">
+<td class="py-3 px-6">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center font-label text-xs text-on-surface ghost-border">A</div>
+<div>
+<div class="font-medium text-on-surface">Alpha Research Ltd</div>
+<div class="font-label text-xs text-on-surface-variant mt-0.5">sk_live_84b...9x21</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-6">
+<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm text-[10px] font-label uppercase bg-tertiary-container/30 text-tertiary border border-tertiary/20">
+<span class="w-1 h-1 rounded-full bg-tertiary"></span> Active
+                                    </span>
+</td>
+<td class="py-3 px-6 font-label text-right">142,040</td>
+<td class="py-3 px-6 font-label text-right">
+<div class="flex flex-col items-end gap-1">
+<span>71%</span>
+<div class="w-12 h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[71%]"></div>
+</div>
+</div>
+</td>
+<td class="py-3 px-6 font-label text-xs text-on-surface-variant text-right">2 mins ago</td>
+<td class="py-3 px-6 text-center">
+<button class="text-on-surface-variant hover:text-on-surface opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-lg" data-icon="more_vert">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="border-b border-outline-variant/5 hover:bg-surface-container/20 transition-colors group">
+<td class="py-3 px-6">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center font-label text-xs text-on-surface ghost-border">B</div>
+<div>
+<div class="font-medium text-on-surface">Beta Analytics</div>
+<div class="font-label text-xs text-on-surface-variant mt-0.5">sk_live_21c...4p99</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-6">
+<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm text-[10px] font-label uppercase bg-tertiary-container/30 text-tertiary border border-tertiary/20">
+<span class="w-1 h-1 rounded-full bg-tertiary"></span> Active
+                                    </span>
+</td>
+<td class="py-3 px-6 font-label text-right">89,211</td>
+<td class="py-3 px-6 font-label text-right">
+<div class="flex flex-col items-end gap-1">
+<span>45%</span>
+<div class="w-12 h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[45%]"></div>
+</div>
+</div>
+</td>
+<td class="py-3 px-6 font-label text-xs text-on-surface-variant text-right">15 mins ago</td>
+<td class="py-3 px-6 text-center">
+<button class="text-on-surface-variant hover:text-on-surface opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-lg" data-icon="more_vert">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="border-b border-outline-variant/5 hover:bg-surface-container/20 transition-colors group bg-error-container/5">
+<td class="py-3 px-6">
+<div class="flex items-center gap-3 opacity-60">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center font-label text-xs text-on-surface ghost-border">G</div>
+<div>
+<div class="font-medium text-on-surface line-through decoration-outline-variant">Gamma Corp (Legacy)</div>
+<div class="font-label text-xs text-on-surface-variant mt-0.5">sk_live_99f...1a2b</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-6">
+<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm text-[10px] font-label uppercase bg-error-container/20 text-error border border-error/20">
+<span class="material-symbols-outlined text-[10px]" data-icon="block">block</span> Revoked
+                                    </span>
+</td>
+<td class="py-3 px-6 font-label text-right text-on-surface-variant">0</td>
+<td class="py-3 px-6 font-label text-right text-on-surface-variant">
+<div class="flex flex-col items-end gap-1">
+<span>0%</span>
+<div class="w-12 h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-surface w-[0%]"></div>
+</div>
+</div>
+</td>
+<td class="py-3 px-6 font-label text-xs text-on-surface-variant text-right">14d ago</td>
+<td class="py-3 px-6 text-center">
+<button class="text-on-surface-variant hover:text-on-surface opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-lg" data-icon="more_vert">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="border-b border-outline-variant/5 hover:bg-surface-container/20 transition-colors group">
+<td class="py-3 px-6">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center font-label text-xs text-on-surface ghost-border">D</div>
+<div>
+<div class="font-medium text-on-surface">Delta Integrations</div>
+<div class="font-label text-xs text-on-surface-variant mt-0.5">sk_live_44m...8p00</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-6">
+<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm text-[10px] font-label uppercase bg-tertiary-container/30 text-tertiary border border-tertiary/20">
+<span class="w-1 h-1 rounded-full bg-tertiary"></span> Active
+                                    </span>
+</td>
+<td class="py-3 px-6 font-label text-right">12,504</td>
+<td class="py-3 px-6 font-label text-right">
+<div class="flex flex-col items-end gap-1">
+<span class="text-tertiary">98%</span>
+<div class="w-12 h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-tertiary w-[98%]"></div>
+</div>
+</div>
+</td>
+<td class="py-3 px-6 font-label text-xs text-on-surface-variant text-right">1 hr ago</td>
+<td class="py-3 px-6 text-center">
+<button class="text-on-surface-variant hover:text-on-surface opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-lg" data-icon="more_vert">more_vert</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="p-4 border-t border-outline-variant/10 flex justify-between items-center bg-surface-container/20">
+<span class="text-xs text-on-surface-variant font-label">Showing 1-4 of 1,204</span>
+<div class="flex gap-1">
+<button class="px-2 py-1 text-xs font-label text-on-surface-variant hover:text-on-surface disabled:opacity-50" disabled=""><span class="material-symbols-outlined text-sm" data-icon="chevron_left">chevron_left</span></button>
+<button class="px-3 py-1 text-xs font-label bg-surface-container-high text-on-surface rounded-sm">1</button>
+<button class="px-3 py-1 text-xs font-label text-on-surface-variant hover:bg-surface-container-high rounded-sm transition-colors">2</button>
+<button class="px-3 py-1 text-xs font-label text-on-surface-variant hover:bg-surface-container-high rounded-sm transition-colors">3</button>
+<button class="px-2 py-1 text-xs font-label text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span></button>
+</div>
+</div>
+</div>
+<!-- Spacer for bottom scroll -->
+<div class="h-8"></div>
+</div>
+</main>
+</body></html>
