@@ -5,3 +5,7 @@ renderer-dist
 !.env.example
 .DS_Store
 dist
+openspec/
+.claude/
+.agents/
+.codex/

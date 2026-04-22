@@ -3,6 +3,9 @@ productName: kNews
 directories:
   buildResources: build
   output: dist
+extraResources:
+  - from: .env.production
+    to: .env.production
 files:
   - main/**/*
   - preload/**/*
@@ -12,9 +15,13 @@ files:
   - renderer-dist/**/*
   - package.json
 mac:
+  icon: build/icon.png
   target:
     - dmg
   category: public.app-category.news
 win:
+  icon: build/icon.png
   target:
     - nsis
+linux:
+  icon: build/icon.png
