@@ -40,13 +40,21 @@ class FeedService {
    * - stale cache (> staleMs): return stale data, trigger background refresh
    * - fresh cache: return cache directly
    * @param {string} sourceId
-   * @param {{ staleMs?: number }} [options]
+   * @param {{ staleMs?: number, latest?: boolean, force?: boolean }} [options]
    * @returns {Promise<any[]|null>}
    */
   async getFeedsBySource(sourceId, options = {}) {
     const source = await this.sourceRepository.findById(sourceId);
     if (!source || source.enabled === false) {
       return null;
+    }
+
+    if ((options.latest || options.force) && this.scraperEngine) {
+      const refreshResult = await this.scraperEngine.refreshOne(sourceId, { force: true });
+      if (refreshResult?.disabled) {
+        return null;
+      }
+      return await this.feedRepository.findCached(sourceId);
     }
 
     const staleMs = Number(options.staleMs) > 0 ? Number(options.staleMs) : 60 * 60 * 1000;

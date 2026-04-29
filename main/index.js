@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, Menu, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
@@ -47,7 +47,17 @@ const { register: registerChatHandlers } = require('./ipc/chat.handler');
 
 let mainWindow = null;
 let instances = null;
+let quitConfirmed = false;
 const appIconPath = path.join(__dirname, '..', 'renderer-dist', 'logo.png');
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -55,6 +65,7 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 700,
+    autoHideMenuBar: true,
     icon: appIconPath,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
@@ -63,11 +74,141 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadFile(path.join(__dirname, '..', 'renderer-dist', 'index.html'));
+  mainWindow.on('close', async (event) => {
+    if (quitConfirmed || isQuitting) return;
+
+    event.preventDefault();
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      buttons: ['退出', '取消'],
+      defaultId: 1,
+      cancelId: 1,
+      title: '退出 K-News',
+      message: '确定要退出 K-News 吗？',
+      detail: '退出后后台抓取、MCP 服务和当前会话会停止。',
+      noLink: true,
+    });
+
+    if (result.response !== 0) return;
+    quitConfirmed = true;
+    app.quit();
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+}
+
+function loadHtmlScreen(title, message, detail = '') {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const safeTitle = escapeHtml(title);
+  const safeMessage = escapeHtml(message);
+  const safeDetail = escapeHtml(detail);
+  const html = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${safeTitle}</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f7f7;
+      --surface: #ffffff;
+      --text: #171717;
+      --muted: #666666;
+      --border: #dddddd;
+      --primary: #111111;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d0d0d;
+        --surface: #161616;
+        --text: #f5f5f5;
+        --muted: #a9a9a9;
+        --border: #303030;
+        --primary: #f5f5f5;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      align-items: center;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      font-family: "Inter", "IBM Plex Sans", "Segoe UI", sans-serif;
+      height: 100vh;
+      justify-content: center;
+      margin: 0;
+    }
+    main {
+      align-items: center;
+      display: grid;
+      gap: 1rem;
+      justify-items: center;
+      max-width: 28rem;
+      padding: 2rem;
+      text-align: center;
+    }
+    .spinner {
+      animation: spin 0.9s linear infinite;
+      border: 2px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 999px;
+      height: 1.5rem;
+      width: 1.5rem;
+    }
+    h1 {
+      font-size: 1.35rem;
+      line-height: 1.25;
+      margin: 0;
+    }
+    p {
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.7;
+      margin: 0;
+    }
+    .detail {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      padding: 0.75rem;
+      text-align: left;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <main>
+    ${safeDetail ? '' : '<div class="spinner" aria-hidden="true"></div>'}
+    <h1>${safeTitle}</h1>
+    <p>${safeMessage}</p>
+    ${safeDetail ? `<div class="detail">${safeDetail}</div>` : ''}
+  </main>
+</body>
+</html>`;
+  mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+}
+
+function loadInitializingScreen() {
+  loadHtmlScreen('正在初始化 K-News', '正在连接服务并准备本地数据，完成后会自动进入应用。');
+}
+
+function loadStartupErrorScreen(error) {
+  const message = error instanceof Error ? error.message : String(error || '未知错误');
+  loadHtmlScreen('初始化失败', '连接 Supabase 或启动本地服务时出现问题。请检查网络和配置后重启应用。', message);
+}
+
+function loadAppScreen() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.loadFile(path.join(__dirname, '..', 'renderer-dist', 'index.html'));
 }
 
 // --- Window helpers ---
@@ -251,6 +392,31 @@ async function cleanup() {
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === 'darwin' && app.dock) {
+    app.dock.setIcon(appIconPath);
+  }
+
+  if (process.platform === 'win32') {
+    Menu.setApplicationMenu(null);
+  }
+
+  createWindow();
+  loadInitializingScreen();
+
+  // macOS: handle deep link when app is already running
+  app.on('open-url', (event, urlStr) => {
+    event.preventDefault();
+    handleDeepLinkCallback(urlStr);
+  });
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+      if (instances) loadAppScreen();
+      else loadInitializingScreen();
+    }
+  });
+
   try {
     // Bootstrap the application with Electron APIs
     instances = await bootstrap({
@@ -268,28 +434,11 @@ app.whenReady().then(async () => {
     }
   } catch (err) {
     console.error('[main] Bootstrap failed:', err.message);
-    dialog.showErrorBox('Startup Error', err.message);
-    app.quit();
+    loadStartupErrorScreen(err);
     return;
   }
 
-  if (process.platform === 'darwin' && app.dock) {
-    app.dock.setIcon(appIconPath);
-  }
-
-  createWindow();
-
-  // macOS: handle deep link when app is already running
-  app.on('open-url', (event, urlStr) => {
-    event.preventDefault();
-    handleDeepLinkCallback(urlStr);
-  });
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
+  loadAppScreen();
 });
 
 app.on('window-all-closed', () => {

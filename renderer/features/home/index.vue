@@ -731,7 +731,7 @@ onMounted(() => {
     const hasHydratedBoards = boards.value.length > 0 && lastBuiltTab.value === activeTab.value
     const hasLocalOverrides = orderedSourceIds.value.length > 0
     if (!hasHydratedBoards || hasLocalOverrides || activeTab.value === 'focus') {
-      await buildBoards()
+      await buildBoards({ immediateSkeleton: true })
       return
     }
     void silentRefreshLoadedBoards()

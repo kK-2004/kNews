@@ -34,8 +34,6 @@
       <li v-for="(item, idx) in items" :key="item.id || item.url || `${source.id}-${idx}`" class="news-item">
         <div class="idx-wrap">
           <span class="idx">{{ String(idx + 1).padStart(2, '0') }}</span>
-          <span v-if="item.extra?.diff > 0" class="idx-trend up i-tabler-arrow-up" aria-hidden="true" />
-          <span v-else-if="item.extra?.diff < 0" class="idx-trend down i-tabler-arrow-down" aria-hidden="true" />
         </div>
         <a class="headline" :href="item.url" target="_blank" rel="noreferrer">
           <span class="title">{{ item.title }}</span>
@@ -43,7 +41,14 @@
             v-if="item.extra?.diff"
             class="diff"
             :class="{ up: item.extra.diff > 0, down: item.extra.diff < 0 }"
-          >{{ formatDiff(item.extra.diff) }}</span>
+          >
+            <span
+              class="diff-icon"
+              :class="item.extra.diff > 0 ? 'i-tabler-arrow-up' : 'i-tabler-arrow-down'"
+              aria-hidden="true"
+            />
+            {{ formatDiff(item.extra.diff) }}
+          </span>
           <span v-if="showHeat(item.extra?.info)" class="heat">{{ item.extra.info }}</span>
           <img v-if="item.extra?.icon" class="title-flag" :src="item.extra.icon" alt="" referrerpolicy="no-referrer" />
         </a>
@@ -115,7 +120,7 @@ const updatedLabel = computed(() => {
 })
 
 const showHeat = (value) => typeof value === 'string' && value.includes('万')
-const formatDiff = (value) => (value > 0 ? `+${value}` : String(value))
+const formatDiff = (value) => String(Math.abs(value))
 
 const emit = defineEmits(['refresh', 'toggle-follow', 'drag-start', 'drag-over', 'drop', 'drag-end'])
 
@@ -370,15 +375,6 @@ const onDragEnd = () => {
   color: var(--on-surface-variant);
 }
 
-.idx-trend {
-  font-size: 0.65rem;
-  line-height: 1;
-  margin-top: 0.1rem;
-}
-
-.idx-trend.up { color: var(--error); }
-.idx-trend.down { color: #2a8f55; }
-
 .headline {
   align-items: center;
   color: inherit;
@@ -415,9 +411,20 @@ const onDragEnd = () => {
 }
 
 .diff {
+  align-items: center;
+  display: inline-flex;
   font-size: 0.72rem;
   font-weight: 400;
+  gap: 0.1rem;
+  line-height: 1;
   white-space: nowrap;
+}
+
+.diff-icon {
+  display: inline-block;
+  font-size: 0.72rem;
+  height: 0.72rem;
+  width: 0.72rem;
 }
 
 .title-flag {

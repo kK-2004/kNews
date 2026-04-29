@@ -147,6 +147,13 @@ class McpServer {
      * @type {Set<string>}
      */
     this._billedSessions = new Set();
+
+    /**
+     * Sessions that have already consumed one rate-limit slot in the current hour.
+     * A single chat request can make multiple MCP tool calls over the same session.
+     * @type {Set<string>}
+     */
+    this._rateLimitedSessions = new Set();
   }
 
   // -----------------------------------------------------------------------
@@ -328,6 +335,11 @@ class McpServer {
       return handler(apiKeyRow);
     }
 
+    const sessionId = this._getSessionId(req);
+    if (sessionId && this._isSessionRateLimited(apiKeyRow.id, sessionId)) {
+      return handler(apiKeyRow);
+    }
+
     const result = this.rateLimiter.check(apiKeyRow.id, rateLimit);
 
     if (!result.allowed) {
@@ -386,6 +398,16 @@ class McpServer {
     }
   }
 
+  _isSessionRateLimited(apiKeyId, sessionId) {
+    if (!sessionId) return false;
+    return this._rateLimitedSessions.has(this._getBillingKey(apiKeyId, sessionId));
+  }
+
+  _recordRateLimitOncePerSession(apiKeyId, sessionId) {
+    if (!sessionId) return;
+    this._rateLimitedSessions.add(this._getBillingKey(apiKeyId, sessionId));
+  }
+
   _handleHealth(res) {
     const uptime = this.startedAt
       ? Math.floor((Date.now() - this.startedAt) / 1000)
@@ -442,6 +464,7 @@ class McpServer {
 
         // Record usage once per session per hour
         this._recordUsageOncePerSession(apiKeyRow.id, newSessionId);
+        this._recordRateLimitOncePerSession(apiKeyRow.id, newSessionId);
       }
 
       return this._sendWebResponse(res, response);

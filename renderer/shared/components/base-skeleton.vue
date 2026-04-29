@@ -8,7 +8,8 @@
 <style scoped>
 .skeleton {
   animation: shimmer 1.4s linear infinite;
-  background: linear-gradient(
+  background-color: var(--surface-container-high);
+  background-image: linear-gradient(
     90deg,
     color-mix(in srgb, var(--muted) 20%, transparent) 25%,
     color-mix(in srgb, var(--muted) 35%, transparent) 35%,
