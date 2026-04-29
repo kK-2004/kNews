@@ -179,7 +179,7 @@
                 <td class="text-right font-mono">{{ formatNumber(Number(key.callCount || key.call_count || 0)) }}</td>
                 <td class="text-right">
                   <div class="quota-cell">
-                    <span>{{ getQuotaPercent(key) }}%</span>
+                    <span>{{ formatQuotaLabel(key) }}</span>
                     <div class="quota-bar-track">
                       <div class="quota-bar-fill" :style="{ width: getQuotaPercent(key) + '%', background: getQuotaColor(key) }"></div>
                     </div>
@@ -216,7 +216,8 @@
         </p>
         <label class="rate-limit-field">
           <span>请求/小时</span>
-          <input v-model.number="editingRateLimit" type="number" min="1" step="1">
+          <input v-model.number="editingRateLimit" type="number" min="-1" step="1">
+          <small>-1 表示不限</small>
         </label>
         <div class="modal-actions">
           <base-button variant="secondary" @click="closeRateLimitModal">取消</base-button>
@@ -430,13 +431,22 @@ const getKeyStatus = (key) => {
 }
 
 const getQuotaPercent = (key) => {
-  const limit = Number(key.rateLimitRph || 0)
+  const limit = Number(key.rateLimitRph ?? key.rate_limit ?? 0)
   const used = Number(key.callCount || key.call_count || 0)
-  if (!limit) return 0
+  if (limit < 0) return 100
+  if (!Number.isFinite(limit) || limit <= 0) return 0
   return Math.min(100, Math.round((used / limit) * 100))
 }
 
+const formatQuotaLabel = (key) => {
+  const limit = Number(key.rateLimitRph ?? key.rate_limit ?? 0)
+  if (limit < 0) return '不限'
+  return `${getQuotaPercent(key)}%`
+}
+
 const getQuotaColor = (key) => {
+  const limit = Number(key.rateLimitRph ?? key.rate_limit ?? 0)
+  if (limit < 0) return 'var(--outline-variant)'
   const pct = getQuotaPercent(key)
   if (pct >= 90) return 'var(--error)'
   if (pct >= 70) return 'var(--tertiary)'
@@ -505,7 +515,8 @@ const deleteAPIKey = async (key) => {
 
 const editRateLimit = async (key) => {
   editingKey.value = key
-  editingRateLimit.value = Math.max(1, Number(key.rateLimitRph || 100))
+  const currentLimit = Number(key.rateLimitRph ?? key.rate_limit ?? 100)
+  editingRateLimit.value = currentLimit < 0 ? -1 : Math.max(1, currentLimit || 100)
   showRateLimitModal.value = true
 }
 
@@ -517,7 +528,8 @@ const closeRateLimitModal = () => {
 
 const saveRateLimit = async () => {
   if (!editingKey.value) return
-  const newLimit = Math.max(1, Number(editingRateLimit.value) || 100)
+  const rawLimit = Number(editingRateLimit.value)
+  const newLimit = rawLimit < 0 ? -1 : Math.max(1, rawLimit || 100)
   try {
     await adminApi.updateApiKeyRateLimit(editingKey.value.id, newLimit)
     editingKey.value.rateLimitRph = newLimit

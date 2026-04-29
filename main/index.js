@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, Menu, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
@@ -55,6 +55,7 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 700,
+    autoHideMenuBar: true,
     icon: appIconPath,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
@@ -275,6 +276,10 @@ app.whenReady().then(async () => {
 
   if (process.platform === 'darwin' && app.dock) {
     app.dock.setIcon(appIconPath);
+  }
+
+  if (process.platform === 'win32') {
+    Menu.setApplicationMenu(null);
   }
 
   createWindow();

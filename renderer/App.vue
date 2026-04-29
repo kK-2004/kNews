@@ -19,10 +19,6 @@
           </div>
         </div>
       </RouterLink>
-      <div class="header-search">
-        <span class="i-tabler-search search-icon" aria-hidden="true"></span>
-        <input class="search-input" type="text" placeholder="热点情报检索..." readonly />
-      </div>
       <nav v-if="isHomeRoute" class="home-tabs">
         <button type="button" :class="{ active: homeTab === 'hottest' }" @click="setHomeTab('hottest')">热点</button>
         <button type="button" :class="{ active: homeTab === 'realtime' }" @click="setHomeTab('realtime')">时事</button>
@@ -65,7 +61,7 @@
           <span v-else class="avatar-fallback i-tabler-brand-github-filled" aria-hidden="true" />
         </button>
         <div
-          v-if="userMenuOpen"
+          v-if="isLoggedIn && userMenuOpen"
           class="user-popover"
           @mouseenter="openUserMenu"
           @mouseleave="scheduleCloseUserMenu"
@@ -402,6 +398,7 @@ const logout = async () => {
 }
 
 const openUserMenu = () => {
+  if (!isLoggedIn.value) return
   if (userMenuCloseTimer) {
     clearTimeout(userMenuCloseTimer)
     userMenuCloseTimer = null
@@ -578,43 +575,6 @@ onUnmounted(() => {
   font-weight: 800;
   color: var(--text);
   line-height: 1.1;
-}
-
-.header-search {
-  align-items: center;
-  background: var(--surface-container-low);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  display: none;
-  gap: 0.5rem;
-  margin-left: 1rem;
-  padding: 0.3rem 0.7rem;
-}
-
-@media (min-width: 900px) {
-  .header-search {
-    display: inline-flex;
-  }
-}
-
-.search-icon {
-  color: var(--on-surface-variant);
-  font-size: 0.9rem;
-}
-
-.search-input {
-  background: transparent;
-  border: none;
-  color: var(--text);
-  font-size: 0.82rem;
-  outline: none;
-  padding: 0;
-  width: 14rem;
-  min-height: auto;
-}
-
-.search-input::placeholder {
-  color: var(--on-surface-variant);
 }
 
 .nav-link {

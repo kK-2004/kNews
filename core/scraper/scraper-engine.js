@@ -235,7 +235,8 @@ class ScraperEngine {
     }
 
     try {
-      const items = await this.fetcher.fetch(source);
+      const previousItems = this.localCache?.read(sourceId)?.data || [];
+      const items = this._withRankDiff(sourceId, await this.fetcher.fetch(source), previousItems);
 
       await this.feedRepository.saveCache(sourceId, items);
 
@@ -266,6 +267,41 @@ class ScraperEngine {
 
   isRunning() {
     return this._running;
+  }
+
+  _withRankDiff(sourceId, items, previousItems) {
+    if (sourceId !== 'weibo' || !Array.isArray(items) || !Array.isArray(previousItems) || previousItems.length === 0) {
+      return items;
+    }
+
+    const previousRank = new Map();
+    previousItems.forEach((item, index) => {
+      const key = this._rankKey(item);
+      if (key && !previousRank.has(key)) {
+        previousRank.set(key, index + 1);
+      }
+    });
+
+    return items.map((item, index) => {
+      const key = this._rankKey(item);
+      const oldRank = key ? previousRank.get(key) : null;
+      if (!oldRank) return item;
+
+      const diff = oldRank - (index + 1);
+      if (!diff) return item;
+
+      return {
+        ...item,
+        extra: {
+          ...(item.extra || {}),
+          diff,
+        },
+      };
+    });
+  }
+
+  _rankKey(item) {
+    return String(item?.url || item?.title || '').trim();
   }
 }
 
