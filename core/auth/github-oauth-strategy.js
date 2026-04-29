@@ -23,7 +23,7 @@ class GitHubOAuthStrategy extends AuthTemplate {
    * @returns {Promise<{device_code: string, user_code: string, interval: number}>}
    */
   async initiate() {
-    const response = await fetch('https://github.com/login/device/code', {
+    const response = await this._fetchWithNetworkRetry('https://github.com/login/device/code', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -33,7 +33,7 @@ class GitHubOAuthStrategy extends AuthTemplate {
         client_id: this.clientId,
         scope: 'repo,user:email',
       }),
-    });
+    }, { label: 'GitHub device code request' });
 
     if (!response.ok) {
       const errBody = await response.text().catch(() => '');
@@ -94,7 +94,7 @@ class GitHubOAuthStrategy extends AuthTemplate {
           throw new DOMException('Aborted', 'AbortError');
         }
 
-        const response = await fetch('https://github.com/login/oauth/access_token', {
+        const response = await this._fetchWithNetworkRetry('https://github.com/login/oauth/access_token', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -106,7 +106,7 @@ class GitHubOAuthStrategy extends AuthTemplate {
             grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
           }),
           signal,
-        });
+        }, { label: 'GitHub token polling' });
 
         if (!response.ok) {
           throw new Error(`GitHub token polling failed: ${response.status}`);
@@ -147,12 +147,12 @@ class GitHubOAuthStrategy extends AuthTemplate {
     }
 
     // Fetch user profile from GitHub API
-    const userResponse = await fetch('https://api.github.com/user', {
+    const userResponse = await this._fetchWithNetworkRetry('https://api.github.com/user', {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: 'application/vnd.github.v3+json',
       },
-    });
+    }, { label: 'GitHub API request' });
 
     if (!userResponse.ok) {
       throw new Error(`GitHub API request failed: ${userResponse.status}`);
@@ -200,6 +200,37 @@ class GitHubOAuthStrategy extends AuthTemplate {
         reject(new DOMException('Aborted', 'AbortError'));
       }, { once: true });
     });
+  }
+
+  async _fetchWithNetworkRetry(url, options = {}, { retries = 3, label = 'Network request' } = {}) {
+    let lastError = null;
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        return await fetch(url, options);
+      } catch (err) {
+        if (err?.name === 'AbortError' || options.signal?.aborted) {
+          throw err;
+        }
+        if (!this._isNetworkFetchError(err)) {
+          throw err;
+        }
+        lastError = err;
+        if (attempt >= retries) break;
+        await this._sleep(800 * (attempt + 1), options.signal);
+      }
+    }
+
+    throw new Error(`${label} 网络请求失败，已重试 ${retries} 次：${lastError?.message || 'fetch failed'}`);
+  }
+
+  _isNetworkFetchError(err) {
+    const message = String(err?.message || '').toLowerCase();
+    return err instanceof TypeError
+      || message.includes('fetch failed')
+      || message.includes('network')
+      || message.includes('econnreset')
+      || message.includes('etimedout')
+      || message.includes('enotfound');
   }
 }
 
