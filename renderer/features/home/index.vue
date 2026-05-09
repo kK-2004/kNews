@@ -134,6 +134,7 @@ const dropTargetId = ref('')
 const lastDropSignature = ref('')
 const followedSourceIds = ref([])
 const orderedSourceIds = ref([])
+const disabledSourceIds = ref([])
 const preferencesApi = usePreferencesApi()
 const userStore = useUserStore()
 const homeBoardStore = useHomeBoardStore()
@@ -149,7 +150,8 @@ const activeTab = computed(() => {
   const tab = String(route.query.tab || 'hottest')
   return ['china', 'focus', 'hottest', 'realtime'].includes(tab) ? tab : 'hottest'
 })
-const localPreferencesKey = 'knews:board-preferences'
+const currentUserId = computed(() => userStore.profile?.userId || 'anonymous')
+const localPreferencesKey = computed(() => `knews:board-preferences:${currentUserId.value}`)
 const INITIAL_LOAD_SIZE = 8
 const LOAD_MORE_SIZE = 4
 const LOAD_MORE_PLACEHOLDER_MAX = 4
@@ -234,20 +236,21 @@ const resolveColor = (value, fallback) => {
 }
 
 const uniqueIds = (value) => [...new Set((Array.isArray(value) ? value : []).map((id) => String(id || '').trim()).filter(Boolean))]
-const canUseRemotePreferences = () => Boolean(userStore.authToken)
+const canUseRemotePreferences = () => Boolean(userStore.profile?.userId)
 
 const readLocalPreferences = () => {
-  if (typeof localStorage === 'undefined') return { followedSourceIds: [], orderedSourceIds: [] }
+  if (typeof localStorage === 'undefined') return { followedSourceIds: [], orderedSourceIds: [], disabledSourceIds: [] }
   try {
     const raw = localStorage.getItem(localPreferencesKey)
-    if (!raw) return { followedSourceIds: [], orderedSourceIds: [] }
+    if (!raw) return { followedSourceIds: [], orderedSourceIds: [], disabledSourceIds: [] }
     const parsed = JSON.parse(raw)
     return {
       followedSourceIds: uniqueIds(parsed?.followedSourceIds),
-      orderedSourceIds: uniqueIds(parsed?.orderedSourceIds)
+      orderedSourceIds: uniqueIds(parsed?.orderedSourceIds),
+      disabledSourceIds: uniqueIds(parsed?.disabledSourceIds)
     }
   } catch {
-    return { followedSourceIds: [], orderedSourceIds: [] }
+    return { followedSourceIds: [], orderedSourceIds: [], disabledSourceIds: [] }
   }
 }
 
@@ -255,13 +258,15 @@ const writeLocalPreferences = (payload) => {
   if (typeof localStorage === 'undefined') return
   localStorage.setItem(localPreferencesKey, JSON.stringify({
     followedSourceIds: uniqueIds(payload?.followedSourceIds),
-    orderedSourceIds: uniqueIds(payload?.orderedSourceIds)
+    orderedSourceIds: uniqueIds(payload?.orderedSourceIds),
+    disabledSourceIds: uniqueIds(payload?.disabledSourceIds)
   }))
 }
 
 const applyPreferences = (payload) => {
   followedSourceIds.value = uniqueIds(payload?.followedSourceIds)
   orderedSourceIds.value = uniqueIds(payload?.orderedSourceIds)
+  disabledSourceIds.value = uniqueIds(payload?.disabledSourceIds)
 }
 
 const savePreferences = async () => {
@@ -469,7 +474,7 @@ const buildBoards = async ({ immediateSkeleton = false } = {}) => {
   try {
     const sources = await fetchSourcesList()
     if (requestId !== buildRequestId) return
-    const enabled = (sources || []).filter((s) => normalizeEnabled(s.enabled))
+    const enabled = (sources || []).filter((s) => normalizeEnabled(s.enabled) && !disabledSourceIds.value.includes(s.id))
     const selected = resolveSelectedSources(enabled)
     homeBoardStore.setAllSelectedSources(selected)
 

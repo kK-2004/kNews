@@ -17,15 +17,15 @@
     </div>
 
     <ul v-else class="modules">
-      <li v-for="source in sources" :key="source.id" class="module-item">
+      <li v-for="source in sources" :key="source.id" class="module-item" :class="{ 'module-disabled': !isGloballyEnabled(source) }">
         <div class="meta">
           <p class="name">{{ source.name }}</p>
           <p class="desc">{{ source.title || source.id }}</p>
         </div>
         <el-switch
           class="module-switch"
-          :model-value="source.enabled !== 0"
-          :disabled="pendingId === source.id"
+          :model-value="isGloballyEnabled(source) && !disabledSourceIds.includes(source.id)"
+          :disabled="pendingId === source.id || !isGloballyEnabled(source)"
           @change="toggleSource(source, $event)"
         />
       </li>
@@ -34,24 +34,75 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, toRaw } from 'vue'
 import { useSourcesApi } from '@/shared/composables/useSourcesApi'
+import { usePreferencesApi } from '@/shared/composables/usePreferencesApi'
+import { useUserStore } from '@/stores/use-user-store'
 
 defineOptions({
   name: 'FeedSettings'
 })
 
 const sourcesApi = useSourcesApi()
+const preferencesApi = usePreferencesApi()
+const userStore = useUserStore()
 const sources = ref([])
 const pendingId = ref('')
 const error = ref('')
 const loading = ref(true)
+const disabledSourceIds = ref([])
+
+const currentUserId = computed(() => userStore.profile?.userId || 'anonymous')
+const localKey = computed(() => `knews:board-preferences:${currentUserId.value}`)
+
+const isGloballyEnabled = (source) => {
+  if (source.enabled === true) return true
+  if (source.enabled === false) return false
+  return source.enabled === 1
+}
+
+const uniqueIds = (arr) => [...new Set((Array.isArray(arr) ? arr : []).map(String).filter(Boolean))]
+
+const readLocalPreferences = () => {
+  try {
+    const raw = localStorage.getItem(localKey.value)
+    if (!raw) return {}
+    return JSON.parse(raw)
+  } catch {
+    return {}
+  }
+}
+
+const writeLocalPreferences = (data) => {
+  try {
+    localStorage.setItem(localKey.value, JSON.stringify(data))
+  } catch { /* ignore */ }
+}
+
+const canUseRemotePreferences = () => Boolean(userStore.profile?.userId)
+
+const loadDisabledSourceIds = async () => {
+  if (canUseRemotePreferences()) {
+    try {
+      const result = await preferencesApi.getPreferences()
+      const boardPrefs = result?.preferences?.board || {}
+      disabledSourceIds.value = uniqueIds(boardPrefs.disabledSourceIds)
+      writeLocalPreferences({ ...readLocalPreferences(), disabledSourceIds: disabledSourceIds.value })
+      return
+    } catch { /* fallback to local */ }
+  }
+  const local = readLocalPreferences()
+  disabledSourceIds.value = uniqueIds(local.disabledSourceIds)
+}
 
 const load = async () => {
   error.value = ''
   loading.value = true
   try {
-    const items = await sourcesApi.fetchSources()
+    const [items] = await Promise.all([
+      sourcesApi.fetchSources(),
+      loadDisabledSourceIds()
+    ])
     sources.value = [...(items || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN'))
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载模块失败'
@@ -61,17 +112,29 @@ const load = async () => {
 }
 
 const toggleSource = async (source, value) => {
-  const enabled = Boolean(value)
-  const previous = source.enabled
+  const enable = Boolean(value)
+  const previousDisabled = disabledSourceIds.value.includes(source.id)
   pendingId.value = source.id
   error.value = ''
   try {
-    const response = await sourcesApi.updateSource(source.id, { enabled })
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    source.enabled = enabled ? 1 : 0
+    const next = enable
+      ? disabledSourceIds.value.filter((id) => id !== source.id)
+      : [...disabledSourceIds.value, source.id]
+    disabledSourceIds.value = uniqueIds(next)
+
+    // Save to local cache immediately
+    writeLocalPreferences({ ...readLocalPreferences(), disabledSourceIds: disabledSourceIds.value })
+
+    // Sync to remote if authenticated
+    if (canUseRemotePreferences()) {
+      await preferencesApi.savePreferences({ board: { disabledSourceIds: [...disabledSourceIds.value] } })
+    }
   } catch (err) {
     error.value = err instanceof Error ? err.message : '更新模块失败'
-    source.enabled = previous
+    // Revert local state on failure
+    disabledSourceIds.value = previousDisabled
+      ? [...new Set([...disabledSourceIds.value, source.id])]
+      : disabledSourceIds.value.filter((id) => id !== source.id)
   } finally {
     pendingId.value = ''
   }
@@ -153,6 +216,11 @@ onMounted(load)
 .module-item:hover {
   background: var(--surface-container);
   border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+}
+
+.module-disabled {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .meta {
