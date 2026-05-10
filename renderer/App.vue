@@ -26,9 +26,18 @@
         <button type="button" :class="{ active: homeTab === 'china' }" @click="setHomeTab('china')">更多</button>        
       </nav>
       <nav class="desktop-nav">
-        <button v-if="isHomeRoute && canRefresh" class="refresh-btn" type="button" @click="onRefresh">一键刷新</button>
-        <button v-else-if="isHomeRoute && isLoggedIn" class="refresh-btn" type="button" @click="showUpgradeHint">一键刷新</button>
-        <button v-else-if="isHomeRoute" class="refresh-btn" type="button" @click="showLoginHint">一键刷新</button>
+        <button v-if="isHomeRoute && canRefresh" class="refresh-btn" :class="{ 'refreshing': refreshState.refreshing }" type="button" :disabled="refreshState.refreshing" @click="onRefresh">
+          <span v-if="refreshState.refreshing" class="refresh-spinner" aria-hidden="true"></span>
+          {{ refreshState.refreshing ? `已刷新 ${refreshState.completed}/${refreshState.total}` : '一键刷新' }}
+        </button>
+        <button v-else-if="isHomeRoute && isLoggedIn" class="refresh-btn" :class="{ 'refreshing': refreshState.refreshing }" type="button" :disabled="refreshState.refreshing" @click="showUpgradeHint">
+          <span v-if="refreshState.refreshing" class="refresh-spinner" aria-hidden="true"></span>
+          {{ refreshState.refreshing ? `已刷新 ${refreshState.completed}/${refreshState.total}` : '一键刷新' }}
+        </button>
+        <button v-else-if="isHomeRoute" class="refresh-btn" :class="{ 'refreshing': refreshState.refreshing }" type="button" :disabled="refreshState.refreshing" @click="showLoginHint">
+          <span v-if="refreshState.refreshing" class="refresh-spinner" aria-hidden="true"></span>
+          {{ refreshState.refreshing ? `已刷新 ${refreshState.completed}/${refreshState.total}` : '一键刷新' }}
+        </button>
         <RouterLink class="nav-link" :class="{ active: isHomeRoute }" to="/">首页</RouterLink>
         <RouterLink class="nav-link" :class="{ active: route.path === '/assistant' }" to="/assistant">助手</RouterLink>
         <RouterLink class="nav-link" :class="{ active: route.path.startsWith('/settings') }" to="/settings">设置</RouterLink>
@@ -145,6 +154,23 @@ const loginEnabled = ref(false)
 const loginModalVisible = ref(false)
 const githubDialogVisible = ref(false)
 const onRefresh = () => window.dispatchEvent(new CustomEvent('knews:refresh-feed'))
+const refreshState = ref({ refreshing: false, completed: 0, total: 0 })
+
+const onRefreshStart = (event) => {
+  refreshState.value = { refreshing: true, completed: 0, total: event.detail?.total || 0 }
+}
+const onRefreshProgress = (event) => {
+  refreshState.value = { ...refreshState.value, completed: event.detail?.completed || 0 }
+}
+const onRefreshEnd = (event) => {
+  const failed = event.detail?.failed || 0
+  refreshState.value = { refreshing: false, completed: 0, total: 0 }
+  if (failed > 0) {
+    warning(`${failed} 个数据源刷新失败`)
+  } else {
+    success('刷新完成')
+  }
+}
 const { commands, query } = useCommands({ onRefresh })
 const { toasts, dismiss, success, warning } = useToast()
 const authApi = useAuthApi()
@@ -469,10 +495,16 @@ onMounted(() => {
   syncAuthToken()
   document.addEventListener('click', onDocumentClick)
   media?.addEventListener('change', onSchemeChange)
+  window.addEventListener('knews:refresh-start', onRefreshStart)
+  window.addEventListener('knews:refresh-progress', onRefreshProgress)
+  window.addEventListener('knews:refresh-end', onRefreshEnd)
 })
 onUnmounted(() => {
   document.removeEventListener('click', onDocumentClick)
   media?.removeEventListener('change', onSchemeChange)
+  window.removeEventListener('knews:refresh-start', onRefreshStart)
+  window.removeEventListener('knews:refresh-progress', onRefreshProgress)
+  window.removeEventListener('knews:refresh-end', onRefreshEnd)
   if (userMenuCloseTimer) {
     clearTimeout(userMenuCloseTimer)
     userMenuCloseTimer = null
@@ -679,6 +711,27 @@ onUnmounted(() => {
 .header-link:active,
 .refresh-btn:active {
   transform: translateY(1px) scale(0.99);
+}
+
+.refresh-btn.refreshing {
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.refresh-spinner {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  border-top-color: var(--primary);
+  border-radius: 999px;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 0.25rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .header-link.router-link-active {

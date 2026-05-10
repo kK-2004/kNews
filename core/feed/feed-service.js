@@ -95,8 +95,8 @@ class FeedService {
         result[id] = [];
         continue;
       }
-      const data = await this.feedRepository.findCached(id);
-      result[id] = data || [];
+      const entry = await this.feedRepository.findBySourceId(id);
+      result[id] = entry ? { items: entry.data || [], fetchedAt: entry.fetchedAt || 0 } : { items: [], fetchedAt: 0 };
     }
     return result;
   }
