@@ -1,6 +1,6 @@
 {
   "name": "knews-desktop",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "description": "kNews - Desktop news reader powered by Electron",
   "main": "main/index.js",
