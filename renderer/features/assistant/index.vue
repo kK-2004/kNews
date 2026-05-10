@@ -960,11 +960,12 @@ if (typeof window !== 'undefined') {
   border: 1px solid var(--border);
   border-top-left-radius: 2px;
   box-shadow: var(--shadow-sm);
-  width: fit-content;
-  max-width: min(44rem, calc(100vw - 8rem));
+  width: min(44rem, calc(100vw - 8rem));
   flex: 0 1 auto;
   border-left: 3px solid var(--primary);
   padding-left: 1rem;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .message-bubble.loading {

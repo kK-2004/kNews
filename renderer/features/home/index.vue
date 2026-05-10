@@ -32,37 +32,39 @@
       <base-button variant="secondary" @click="resetMoreFilters">重置</base-button>
     </div>
 
-    <div v-if="loading && !boards.length" class="loading-grid">
-      <article v-for="i in 8" :key="`skeleton-${i}`" class="board-skeleton" aria-hidden="true">
-        <header class="board-skeleton-head">
-          <div class="board-skeleton-brand">
-            <base-skeleton class="s-icon" />
-            <base-skeleton class="s-title" />
-            <base-skeleton class="s-badge" />
+    <Transition name="tab-switch" mode="out-in">
+      <div v-if="loading && !boards.length" key="skeleton" class="loading-grid">
+        <article v-for="i in 8" :key="`skeleton-${i}`" class="board-skeleton" aria-hidden="true">
+          <header class="board-skeleton-head">
+            <div class="board-skeleton-brand">
+              <base-skeleton class="s-icon" />
+              <base-skeleton class="s-title" />
+              <base-skeleton class="s-badge" />
+            </div>
+            <div class="board-skeleton-ops">
+              <base-skeleton class="s-op" />
+              <base-skeleton class="s-op" />
+            </div>
+          </header>
+          <base-skeleton class="s-updated" />
+          <div class="board-skeleton-list">
+            <div v-for="j in 7" :key="`skeleton-row-${i}-${j}`" class="board-skeleton-row">
+              <base-skeleton class="s-rank" />
+              <base-skeleton class="s-line" />
+            </div>
           </div>
-          <div class="board-skeleton-ops">
-            <base-skeleton class="s-op" />
-            <base-skeleton class="s-op" />
-          </div>
-        </header>
-        <base-skeleton class="s-updated" />
-        <div class="board-skeleton-list">
-          <div v-for="j in 7" :key="`skeleton-row-${i}-${j}`" class="board-skeleton-row">
-            <base-skeleton class="s-rank" />
-            <base-skeleton class="s-line" />
-          </div>
-        </div>
-      </article>
-    </div>
+        </article>
+      </div>
 
-    <TransitionGroup
-      v-else
-      ref="boardGridRef"
-      name="board"
-      tag="div"
-      class="board-grid"
-      @scroll.passive="onBoardGridScroll"
-    >
+      <TransitionGroup
+        v-else
+        ref="boardGridRef"
+        name="board"
+        tag="div"
+        key="boards"
+        class="board-grid"
+        @scroll.passive="onBoardGridScroll"
+      >
       <source-board
         v-for="board in boards"
         :key="board.source.id"
@@ -108,6 +110,7 @@
         </div>
       </article>
     </TransitionGroup>
+    </Transition>
   </section>
 </template>
 
@@ -125,6 +128,7 @@ import SourceBoard from './components/source-board.vue'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/use-user-store'
 import { useHomeBoardStore } from '@/stores/use-home-board-store'
+import { bootstrapApi } from '@/shared/utils/ipc-api'
 
 const loadingMore = ref(false)
 let cachedSources = null
@@ -134,6 +138,7 @@ const dropTargetId = ref('')
 const lastDropSignature = ref('')
 const followedSourceIds = ref([])
 const orderedSourceIds = ref([])
+const disabledSourceIds = ref([])
 const preferencesApi = usePreferencesApi()
 const userStore = useUserStore()
 const homeBoardStore = useHomeBoardStore()
@@ -149,7 +154,8 @@ const activeTab = computed(() => {
   const tab = String(route.query.tab || 'hottest')
   return ['china', 'focus', 'hottest', 'realtime'].includes(tab) ? tab : 'hottest'
 })
-const localPreferencesKey = 'knews:board-preferences'
+const currentUserId = computed(() => userStore.profile?.userId || 'anonymous')
+const localPreferencesKey = computed(() => `knews:board-preferences:${currentUserId.value}`)
 const INITIAL_LOAD_SIZE = 8
 const LOAD_MORE_SIZE = 4
 const LOAD_MORE_PLACEHOLDER_MAX = 4
@@ -234,20 +240,21 @@ const resolveColor = (value, fallback) => {
 }
 
 const uniqueIds = (value) => [...new Set((Array.isArray(value) ? value : []).map((id) => String(id || '').trim()).filter(Boolean))]
-const canUseRemotePreferences = () => Boolean(userStore.authToken)
+const canUseRemotePreferences = () => Boolean(userStore.profile?.userId)
 
 const readLocalPreferences = () => {
-  if (typeof localStorage === 'undefined') return { followedSourceIds: [], orderedSourceIds: [] }
+  if (typeof localStorage === 'undefined') return { followedSourceIds: [], orderedSourceIds: [], disabledSourceIds: [] }
   try {
     const raw = localStorage.getItem(localPreferencesKey)
-    if (!raw) return { followedSourceIds: [], orderedSourceIds: [] }
+    if (!raw) return { followedSourceIds: [], orderedSourceIds: [], disabledSourceIds: [] }
     const parsed = JSON.parse(raw)
     return {
       followedSourceIds: uniqueIds(parsed?.followedSourceIds),
-      orderedSourceIds: uniqueIds(parsed?.orderedSourceIds)
+      orderedSourceIds: uniqueIds(parsed?.orderedSourceIds),
+      disabledSourceIds: uniqueIds(parsed?.disabledSourceIds)
     }
   } catch {
-    return { followedSourceIds: [], orderedSourceIds: [] }
+    return { followedSourceIds: [], orderedSourceIds: [], disabledSourceIds: [] }
   }
 }
 
@@ -255,13 +262,15 @@ const writeLocalPreferences = (payload) => {
   if (typeof localStorage === 'undefined') return
   localStorage.setItem(localPreferencesKey, JSON.stringify({
     followedSourceIds: uniqueIds(payload?.followedSourceIds),
-    orderedSourceIds: uniqueIds(payload?.orderedSourceIds)
+    orderedSourceIds: uniqueIds(payload?.orderedSourceIds),
+    disabledSourceIds: uniqueIds(payload?.disabledSourceIds)
   }))
 }
 
 const applyPreferences = (payload) => {
   followedSourceIds.value = uniqueIds(payload?.followedSourceIds)
   orderedSourceIds.value = uniqueIds(payload?.orderedSourceIds)
+  disabledSourceIds.value = uniqueIds(payload?.disabledSourceIds)
 }
 
 const savePreferences = async () => {
@@ -337,7 +346,10 @@ const fetchSourcesList = async () => {
   if (cachedSources) return cachedSources
   try {
     const data = await window.api.sources.list()
-    if (data?.error) throw new Error(data.error)
+    if (data?.error) {
+      if (data.retry) return []
+      throw new Error(data.error)
+    }
     cachedSources = Array.isArray(data) ? data : []
     return cachedSources
   } catch {
@@ -347,7 +359,7 @@ const fetchSourcesList = async () => {
 
 const fetchSourceItems = async (id, { latest = false } = {}) => {
   try {
-    const data = await window.api.feeds.getBySource(id)
+    const data = await window.api.feeds.getBySource(id, latest ? { latest: true } : undefined)
     if (data?.error) throw new Error(data.error)
     const items = Array.isArray(data) ? data : (data?.items || [])
     return {
@@ -366,7 +378,10 @@ const fetchSourceItems = async (id, { latest = false } = {}) => {
 const fetchBatchSourceItems = async (sourceIds) => {
   try {
     const data = await window.api.feeds.getCachedBatch(sourceIds)
-    if (data?.error) throw new Error(data.error)
+    if (data?.error) {
+      if (data.retry) return {}
+      throw new Error(data.error)
+    }
     return data
   } catch {
     return {}
@@ -395,9 +410,25 @@ const appendBoards = async ({ latest = false, count = LOAD_MORE_SIZE, requestId 
   if (end <= start) return false
 
   const chunk = allSelectedSources.value.slice(start, end)
-  const results = await Promise.allSettled(chunk.map((source) => fetchSourceItems(source.id, { latest })))
+
+  // Read cache for new chunk to get real fetchedAt timestamps
+  const batchIds = chunk.map((s) => s.id)
+  const batchData = await fetchBatchSourceItems(batchIds)
   if (requestId && requestId !== buildRequestId) return false
-  const appended = chunk.map((source, offset) => toBoard(source, start + offset, results[offset]))
+
+  const appended = chunk.map((source, idx) => {
+    const entry = batchData[source.id] || { items: [], fetchedAt: 0 }
+    const items = Array.isArray(entry) ? entry : (entry.items || [])
+    const fetchedAt = entry.fetchedAt || 0
+    if (items.length > 0) {
+      return toBoard(source, start + idx, {
+        status: 'fulfilled',
+        value: { items, updatedTime: fetchedAt, status: 'success', warning: '' }
+      })
+    }
+    // No cache — fetch live and use current time
+    return toBoard(source, start + idx, { status: 'fulfilled', value: { items: [], updatedTime: 0, status: 'pending', warning: '' } })
+  })
   homeBoardStore.setBoards([...boards.value, ...appended])
   return true
 }
@@ -459,6 +490,8 @@ const resolveSelectedSources = (enabled) => {
   return selected
 }
 
+const STALE_MS = 60 * 60 * 1000 // 1 hour
+
 const buildBoards = async ({ immediateSkeleton = false } = {}) => {
   const requestId = ++buildRequestId
   homeBoardStore.setError('')
@@ -469,7 +502,7 @@ const buildBoards = async ({ immediateSkeleton = false } = {}) => {
   try {
     const sources = await fetchSourcesList()
     if (requestId !== buildRequestId) return
-    const enabled = (sources || []).filter((s) => normalizeEnabled(s.enabled))
+    const enabled = (sources || []).filter((s) => normalizeEnabled(s.enabled) && !disabledSourceIds.value.includes(s.id))
     const selected = resolveSelectedSources(enabled)
     homeBoardStore.setAllSelectedSources(selected)
 
@@ -480,31 +513,45 @@ const buildBoards = async ({ immediateSkeleton = false } = {}) => {
       return
     }
 
-    // Batch fetch cached feeds in one IPC call
+    // Batch fetch cached feeds — pure cache read, no scraping triggered
     const batchIds = selected.slice(0, INITIAL_LOAD_SIZE).map((s) => s.id)
     const batchData = await fetchBatchSourceItems(batchIds)
     if (requestId !== buildRequestId) return
     const chunk = selected.slice(0, INITIAL_LOAD_SIZE)
-    const hasAllCached = chunk.every((source) => {
-      const items = batchData[source.id]
-      return Array.isArray(items) && items.length > 0
-    })
 
-    if (hasAllCached && !immediateSkeleton) {
-      // Show cached data immediately, fetch missing in background
-      const batchBoards = chunk.map((source, idx) => {
-        const items = batchData[source.id] || []
-        return toBoard(source, idx, { status: 'fulfilled', value: { items, updatedTime: Date.now(), status: 'success', warning: '' } })
+    // Categorize sources by cache state
+    const uncachedIds = []
+    const staleIds = []
+    for (const s of chunk) {
+      const entry = batchData[s.id]
+      if (!entry) { uncachedIds.push(s.id); continue }
+      const items = Array.isArray(entry) ? entry : (entry.items || [])
+      if (items.length === 0) { uncachedIds.push(s.id); continue }
+      const fetchedAt = entry.fetchedAt || 0
+      if (Date.now() - fetchedAt > STALE_MS) { staleIds.push(s.id) }
+    }
+
+    // Build boards from cache — use real fetchedAt as updatedTime
+    const batchBoards = chunk.map((source, idx) => {
+      const entry = batchData[source.id] || { items: [], fetchedAt: 0 }
+      const items = Array.isArray(entry) ? entry : (entry.items || [])
+      const fetchedAt = entry.fetchedAt || 0
+      return toBoard(source, idx, {
+        status: 'fulfilled',
+        value: { items, updatedTime: fetchedAt, status: items.length ? 'success' : 'pending', warning: '' }
       })
-      homeBoardStore.setBoards(batchBoards)
-      void silentRefreshLoadedBoards()
-    } else {
-      // Nothing cached — show skeleton, fetch normally
-      homeBoardStore.setBoards([])
-      homeBoardStore.setLoading(true)
-      await appendBoards({ latest: false, count: INITIAL_LOAD_SIZE, requestId })
-      if (requestId !== buildRequestId) return
-      homeBoardStore.setLoading(false)
+    })
+    homeBoardStore.setBoards(batchBoards)
+    homeBoardStore.setLoading(false)
+
+    // Fetch sources that have no cache (sync — blocks until data arrives)
+    if (uncachedIds.length > 0) {
+      void refreshUncachedSources(uncachedIds, requestId)
+    }
+
+    // Auto-trigger global refresh with progress UI if any source is stale
+    if (staleIds.length > 0) {
+      void autoRefreshStale(requestId)
     }
 
     homeBoardStore.setLastBuiltTab(activeTab.value)
@@ -512,6 +559,86 @@ const buildBoards = async ({ immediateSkeleton = false } = {}) => {
     if (requestId !== buildRequestId) return
     homeBoardStore.setError(err instanceof Error ? err.message : 'Failed to load source boards')
     homeBoardStore.setLoading(false)
+  }
+}
+
+const autoRefreshStale = async (requestId) => {
+  // Trigger a full per-source refresh with progress UI (same as manual one-click refresh)
+  const sources = cachedSources || []
+  const enabled = sources.filter((s) => normalizeEnabled(s.enabled) && !disabledSourceIds.value.includes(s.id))
+  const selected = resolveSelectedSources(enabled)
+  const total = selected.length
+  if (!total) return
+
+  window.dispatchEvent(new CustomEvent('knews:refresh-start', { detail: { total } }))
+
+  let completed = 0
+  let failed = 0
+
+  const results = await Promise.allSettled(
+    selected.map(async (source) => {
+      const result = await fetchSourceItems(source.id, { latest: true })
+      return { id: source.id, ...result }
+    })
+  )
+
+  if (requestId !== buildRequestId) return
+
+  const responseMap = new Map()
+  for (const result of results) {
+    completed++
+    if (result.status === 'fulfilled' && result.value?.id) {
+      responseMap.set(result.value.id, result.value)
+    } else {
+      failed++
+    }
+    window.dispatchEvent(new CustomEvent('knews:refresh-progress', { detail: { completed, total } }))
+  }
+
+  // Patch boards with fresh data
+  if (responseMap.size > 0) {
+    homeBoardStore.setBoards(boards.value.map((board) => {
+      const next = responseMap.get(board.source.id)
+      if (!next || !next.items?.length) return board
+      return {
+        ...board,
+        items: next.items,
+        updatedTime: next.updatedTime || board.updatedTime,
+        status: 'success',
+        warning: ''
+      }
+    }))
+  }
+
+  window.dispatchEvent(new CustomEvent('knews:refresh-end', { detail: { failed } }))
+}
+
+const refreshUncachedSources = async (sourceIds, requestId) => {
+  // getFeedsBySource has its own cache policy: no cache → sync fetch, stale → background refresh, fresh → return directly
+  const results = await Promise.allSettled(
+    sourceIds.map(async (id) => {
+      const data = await window.api.feeds.getBySource(id)
+      if (data?.error) throw new Error(data.error)
+      const items = Array.isArray(data) ? data : (data?.items || [])
+      return { id, items, updatedTime: Date.now(), status: 'success', warning: '' }
+    })
+  )
+
+  if (requestId !== buildRequestId) return
+
+  const responseMap = new Map()
+  for (const result of results) {
+    if (result.status === 'fulfilled' && result.value?.id) {
+      responseMap.set(result.value.id, result.value)
+    }
+  }
+
+  if (responseMap.size > 0) {
+    homeBoardStore.setBoards(boards.value.map((board) => {
+      const next = responseMap.get(board.source.id)
+      if (!next || !next.items?.length) return board
+      return { ...board, items: next.items, updatedTime: next.updatedTime, status: 'success', warning: '' }
+    }))
   }
 }
 
@@ -554,7 +681,37 @@ const onGlobalRefresh = async () => {
   cachedSources = null
   homeBoardStore.setLoading(true)
   try {
-    await window.api.scraper.refreshAll()
+    // Resolve all visible sources for current tab
+    const sources = await fetchSourcesList()
+    const enabled = (sources || []).filter((s) => normalizeEnabled(s.enabled) && !disabledSourceIds.value.includes(s.id))
+    const selected = resolveSelectedSources(enabled)
+    const total = selected.length
+
+    window.dispatchEvent(new CustomEvent('knews:refresh-start', { detail: { total } }))
+
+    let completed = 0
+    let failed = 0
+
+    // Trigger scraper refresh for all sources
+    window.api.scraper.refreshAll().catch(() => {})
+
+    // Per-source refresh with progress events
+    await Promise.allSettled(
+      selected.map(async (source) => {
+        try {
+          await fetchSourceItems(source.id, { latest: true })
+        } catch {
+          failed++
+        } finally {
+          completed++
+          window.dispatchEvent(new CustomEvent('knews:refresh-progress', { detail: { completed, total } }))
+        }
+      })
+    )
+
+    window.dispatchEvent(new CustomEvent('knews:refresh-end', { detail: { failed } }))
+
+    // Refresh displayed boards
     await refreshAll()
   } finally {
     homeBoardStore.setLoading(false)
@@ -688,11 +845,13 @@ const onDragEnd = () => {
 }
 
 watch(activeTab, () => {
+  homeBoardStore.setCurrentTab(activeTab.value)
   if (activeTab.value !== 'china') {
     resetMoreFilters()
   } else {
     debouncedKeyword.value = String(moreKeyword.value || '')
   }
+  // Always rebuild from scratch for the new tab — don't rely on stale store cache
   buildBoards({ immediateSkeleton: true })
 })
 
@@ -724,23 +883,47 @@ watch(() => userStore.authToken, async (newToken) => {
   }
 })
 
-onMounted(() => {
+let bootstrapReady = false
+let cleanupBootstrapDone = null
+let cleanupBootstrapError = null
+
+onMounted(async () => {
+  homeBoardStore.setCurrentTab(activeTab.value)
   window.addEventListener('knews:refresh-feed', onGlobalRefresh)
   timeTicker = setInterval(() => { timeNow.value = Date.now() }, 60_000)
+
+  // Check bootstrap status — if not ready, show skeleton and wait
+  try {
+    const status = await bootstrapApi.status()
+    bootstrapReady = status?.ready !== false
+  } catch {
+    // bootstrap:status IPC may not be registered yet — assume not ready
+    bootstrapReady = false
+  }
+
+  cleanupBootstrapDone = bootstrapApi.onDone(() => {
+    bootstrapReady = true
+    buildBoards({ immediateSkeleton: false })
+  })
+  cleanupBootstrapError = bootstrapApi.onError((message) => {
+    console.warn('[home] Bootstrap error:', message)
+    homeBoardStore.setError('服务初始化失败，部分功能不可用')
+  })
+
   loadPreferences().then(async () => {
-    const hasHydratedBoards = boards.value.length > 0 && lastBuiltTab.value === activeTab.value
-    const hasLocalOverrides = orderedSourceIds.value.length > 0
-    if (!hasHydratedBoards || hasLocalOverrides || activeTab.value === 'focus') {
-      await buildBoards({ immediateSkeleton: true })
+    if (!bootstrapReady) {
+      homeBoardStore.setLoading(true)
       return
     }
-    void silentRefreshLoadedBoards()
+    await buildBoards({ immediateSkeleton: !homeBoardStore.hasCachedBoards(activeTab.value) })
   })
 })
 
 onUnmounted(() => {
   window.removeEventListener('knews:refresh-feed', onGlobalRefresh)
   if (timeTicker) { clearInterval(timeTicker); timeTicker = null }
+  cleanupBootstrapDone?.()
+  cleanupBootstrapError?.()
 })
 
 onServerPrefetch(async () => {
@@ -899,6 +1082,22 @@ onServerPrefetch(async () => {
 
 .board-move {
   transition: transform 0.16s ease;
+}
+
+/* Tab switch transition — smooth crossfade with skeleton */
+.tab-switch-enter-active,
+.tab-switch-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.tab-switch-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.tab-switch-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 @media (min-width: 900px) {

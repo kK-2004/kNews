@@ -84,6 +84,18 @@ export const userApi = {
   }
 }
 
+export const bootstrapApi = {
+  status() {
+    return ensureApi().bootstrap.status().catch(wrapError)
+  },
+  onDone(callback) {
+    return ensureApi().bootstrap.onDone(callback)
+  },
+  onError(callback) {
+    return ensureApi().bootstrap.onError(callback)
+  }
+}
+
 export const userActionsApi = {
   bookmark(articleId, active) {
     return ensureApi().userActions.bookmark(articleId, active).catch(wrapError)

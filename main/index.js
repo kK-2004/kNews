@@ -4,6 +4,7 @@ const { app, BrowserWindow, Menu, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const os = require('os');
 const dotenv = require('dotenv');
 
 function loadEnvironment() {
@@ -47,6 +48,7 @@ const { register: registerChatHandlers } = require('./ipc/chat.handler');
 
 let mainWindow = null;
 let instances = null;
+let bootstrapDone = false;
 let quitConfirmed = false;
 const appIconPath = path.join(__dirname, '..', 'renderer-dist', 'logo.png');
 
@@ -97,6 +99,17 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+}
+
+function hasLocalCache() {
+  const cacheDir = path.join(os.homedir(), '.knews', 'cache');
+  try {
+    if (!fs.existsSync(cacheDir)) return false;
+    const files = fs.readdirSync(cacheDir);
+    return files.some((f) => f.endsWith('.json'));
+  } catch {
+    return false;
+  }
 }
 
 function loadHtmlScreen(title, message, detail = '') {
@@ -401,7 +414,35 @@ app.whenReady().then(async () => {
   }
 
   createWindow();
-  loadInitializingScreen();
+
+  // First-time users (no local cache) see the initializing screen
+  // Returning users (with cache) go straight to the app for instant load
+  const cached = hasLocalCache();
+  if (cached) {
+    loadAppScreen();
+  } else {
+    loadInitializingScreen();
+  }
+
+  // Register minimal IPC handler for bootstrap status immediately
+  const { ipcMain: earlyIpc } = require('electron');
+  earlyIpc.handle('bootstrap:status', () => ({ ready: bootstrapDone }));
+
+  // Fallback: catch unregistered invoke channels before bootstrap completes
+  // Returns a structured error instead of crashing
+  const fallbackHandler = (e, ...args) => {
+    if (!bootstrapDone) {
+      return { error: 'Service not ready', retry: true };
+    }
+  };
+  // Register fallback for channels that renderer calls on mount
+  const earlyChannels = [
+    'auth:getSession', 'user:profile', 'sources:list',
+    'user:getPreferences', 'feeds:get', 'feeds:getCachedBatch'
+  ];
+  for (const ch of earlyChannels) {
+    earlyIpc.handle(ch, fallbackHandler);
+  }
 
   // macOS: handle deep link when app is already running
   app.on('open-url', (event, urlStr) => {
@@ -412,33 +453,50 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
-      if (instances) loadAppScreen();
+      if (instances || hasLocalCache()) loadAppScreen();
       else loadInitializingScreen();
     }
   });
 
+  // Bootstrap in background — renderer shows cached data while initializing
   try {
-    // Bootstrap the application with Electron APIs
     instances = await bootstrap({
       safeStorage: require('electron').safeStorage,
       shell: require('electron').shell,
     });
 
-    // Register IPC handlers with bootstrapped instances
     const { ipcMain } = require('electron');
+    // Remove fallback handlers before registering real ones
+    for (const ch of earlyChannels) {
+      ipcMain.removeHandler(ch);
+    }
     registerIpcHandlers(ipcMain, instances);
+    bootstrapDone = true;
 
-    // Handle deep link from Windows first-instance startup
+    // Notify renderer that bootstrap is complete
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('bootstrap:done');
+    }
+
+    // If user is on initializing screen (first-time), switch to app screen
+    if (!cached && mainWindow && !mainWindow.isDestroyed()) {
+      loadAppScreen();
+    }
+
     if (pendingDeepLink) {
       handleDeepLinkCallback(pendingDeepLink);
     }
   } catch (err) {
     console.error('[main] Bootstrap failed:', err.message);
-    loadStartupErrorScreen(err);
-    return;
+    bootstrapDone = true;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('bootstrap:error', err instanceof Error ? err.message : String(err));
+      // Show error screen for first-time users who were on initializing screen
+      if (!cached) {
+        loadStartupErrorScreen(err);
+      }
+    }
   }
-
-  loadAppScreen();
 });
 
 app.on('window-all-closed', () => {

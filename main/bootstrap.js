@@ -36,7 +36,6 @@ const UsageRepository = require('../core/usage/usage-repository');
  */
 async function bootstrap({ safeStorage, shell }) {
   console.log('[bootstrap] Starting application...');
-
   // 1. Supabase connection
   console.log('[bootstrap] Connecting to Supabase...');
   const supabase = await getSupabase();
@@ -140,10 +139,10 @@ async function bootstrap({ safeStorage, shell }) {
   }
   console.log(`[bootstrap] Synced ${syncedCount} new sources (${existingIds.size} already existed).`);
 
-  // 9. Schedule ScraperEngine — only force scrape if cache is empty or stale (>1h)
-  const forceInitialScrape = scraperEngine.shouldInitialScrape();
-  console.log(`[bootstrap] Initial scrape needed: ${forceInitialScrape}`);
-  scraperEngine.schedule({ forceInitialScrape });
+  // 9. Schedule ScraperEngine — defer first scrape to aligned interval boundary
+  // Cache-first: renderer shows cached data immediately, scraper refreshes on schedule
+  console.log('[bootstrap] Scheduling ScraperEngine (cache-first mode)...');
+  scraperEngine.schedule({ forceInitialScrape: false });
 
   // 10. McpServer
   console.log('[bootstrap] Starting McpServer...');

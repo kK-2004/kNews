@@ -87,6 +87,20 @@ contextBridge.exposeInMainWorld("api", {
     create: (plan) => ipcRenderer.invoke("subscription:create", { plan }),
   },
 
+  bootstrap: {
+    status: () => ipcRenderer.invoke('bootstrap:status'),
+    onDone: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on('bootstrap:done', handler);
+      return () => ipcRenderer.removeListener('bootstrap:done', handler);
+    },
+    onError: (callback) => {
+      const handler = (_event, message) => callback(message);
+      ipcRenderer.on('bootstrap:error', handler);
+      return () => ipcRenderer.removeListener('bootstrap:error', handler);
+    },
+  },
+
   chat: {
     listSessions: () => ipcRenderer.invoke("chat:listSessions"),
     getSession: (sessionId) => ipcRenderer.invoke("chat:getSession", sessionId),
